@@ -1,0 +1,4 @@
+packages:
+    bcomp-compiler.cabal
+
+tests: True
