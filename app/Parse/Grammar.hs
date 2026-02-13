@@ -26,7 +26,7 @@ In future it's planned to make it more close to C and B languages.
 Now it lacks:
   - inc/dec
   - assigns as expressions
-  - code blocks (only for `if`)
+  - (DONE) code blocks
   - loops and loop control
   - functions
   - switch (not guaranteed to be added)
@@ -36,7 +36,10 @@ program :: Rule Program
 program = Program <$> many stmt
 
 stmt :: Rule Stmt
-stmt = try arrDef <|> varDef <|> labeledStmt
+stmt =
+  try arrDef
+    <|> varDef
+    <|> ExecStmt <$> pos <*> labeledStmt
 
 arrDef :: Rule Stmt
 arrDef = do
@@ -56,24 +59,28 @@ varDef = do
   colon
   return $ VarDef p varIdent v
 
-labeledStmt :: Rule Stmt
-labeledStmt = ExecStmt <$> pos <*> optional (try $ ident <* operator ":") <*> execStmt
+labeledStmt :: Rule LabeledStmt
+labeledStmt = LabeledStmt <$> pos <*> optional (try $ ident <* operator ":") <*> execStmt
 
 execStmt :: Rule ExecStmt
-execStmt = assign <* colon <|> if_ <|> goto <* colon
+execStmt =
+  (assign <|> goto) <* colon
+    <|> if_
+    <|> block
+    <|> noOp
   where
     assign = Assign <$> pos <*> lexpr <* operator "=" <*> rexpr
     if_ = do
       p <- pos
       keyword "if"
       cond <- par "(" rexpr ")"
-      then_ <- block
-      else_ <- keyword "else" *> block <|> pure []
+      then_ <- labeledStmt
+      elsePos <- pos
+      else_ <- keyword "else" *> labeledStmt <|> pure (LabeledStmt elsePos Nothing $ NoOp elsePos)
       return $ If p cond then_ else_
     goto = Goto <$> pos <* keyword "goto" <*> ident
-
-block :: Rule [Stmt]
-block = par "{" (many stmt) "}" <|> (pure <$> labeledStmt)
+    block = Block <$> pos <*> par "{" (many stmt) "}"
+    noOp = NoOp <$> pos <* operator ";"
 
 par :: String -> Rule a -> String -> Rule a
 par l p r = operator l *> p <* operator r

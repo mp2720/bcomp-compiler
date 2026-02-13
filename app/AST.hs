@@ -7,6 +7,7 @@ module AST
     LabelIdent,
     VarIdent,
     Stmt (..),
+    LabeledStmt (..),
     ExecStmt (..),
     RightExpr (..),
     BinOp (..),
@@ -37,15 +38,20 @@ type LabelIdent = String
 type VarIdent = String
 
 data Stmt
-  = ExecStmt P (Maybe LabelIdent) ExecStmt
+  = ExecStmt P LabeledStmt
   | VarDef P VarIdent (Maybe RightExpr)
   | ArrDef P VarIdent (Maybe Integer) [Integer]
   deriving (Show, Eq)
 
+data LabeledStmt = LabeledStmt P (Maybe LabelIdent) ExecStmt
+  deriving (Show, Eq)
+
 data ExecStmt
   = Assign P LeftExpr RightExpr
-  | If P RightExpr [Stmt] [Stmt]
+  | If P RightExpr LabeledStmt LabeledStmt
   | Goto P LabelIdent
+  | Block P [Stmt]
+  | NoOp P
   deriving (Show, Eq)
 
 data RightExpr
@@ -86,14 +92,19 @@ class Positioned a where
   position :: a -> P
 
 instance Positioned Stmt where
-  position (ExecStmt p _ _) = p
+  position (ExecStmt p _) = p
   position (VarDef p _ _) = p
   position (ArrDef p _ _ _) = p
+
+instance Positioned LabeledStmt where
+  position (LabeledStmt p _ _) = p
 
 instance Positioned ExecStmt where
   position (Assign p _ _) = p
   position (If p _ _ _) = p
   position (Goto p _) = p
+  position (Block p _) = p
+  position (NoOp p) = p
 
 instance Positioned RightExpr where
   position (Literal p _) = p
@@ -118,15 +129,12 @@ instance StringDump Program where
 instance StringDump Stmt where
   dump' indent stmt =
     case stmt of
-      ExecStmt _ label execStmt -> dumpLabel label ++ dump' indent execStmt
-      VarDef _ varIdent rexpr -> printf "auto %s%s;" varIdent (dumpAssignRexpr rexpr)
-      ArrDef _ arrIdent size els -> printf "%s[%s]%s;" arrIdent (dumpArrSize size) (dumpElements els)
+      ExecStmt _ labeledStmt -> dump' indent labeledStmt
+      VarDef _ varIdent rexpr -> indent ++ printf "auto %s%s;" varIdent (dumpAssignRexpr rexpr)
+      ArrDef _ arrIdent size els -> indent ++ printf "%s[%s]%s;" arrIdent (dumpArrSize size) (dumpElements els)
     where
-      dumpLabel Nothing = ""
-      dumpLabel (Just labelIdent) = labelIdent ++ ": "
-
       dumpAssignRexpr Nothing = ""
-      dumpAssignRexpr (Just v) = printf " = %s" (dump v)
+      dumpAssignRexpr (Just v) = printf " = %s" (dump' indent v)
 
       dumpArrSize Nothing = ""
       dumpArrSize (Just size) = show size
@@ -134,18 +142,24 @@ instance StringDump Stmt where
       dumpElements els@(_ : _) = " " ++ intercalate ", " (map show els)
       dumpElements [] = ""
 
+instance StringDump LabeledStmt where
+  dump' indent (LabeledStmt _ Nothing stmt) = indent ++ dump' indent stmt
+  dump' indent (LabeledStmt _ (Just label) stmt) = indent ++ printf "%s: %s" label (dump' indent stmt)
+
 instance StringDump ExecStmt where
   dump' _ (Assign _ l r) = printf "%s = %s;" (dump l) (dump r)
   dump' indent (If _ cond then_ else_) =
-    printf "if(%s) {\n%s\n}" (dump cond) (dump' (indent ++ "  ") then_) ++ dumpElse else_
+    printf "if(%s) %s\nelse %s" (dump cond) (branch then_) (branch else_)
     where
-      dumpElse :: [Stmt] -> String
-      dumpElse [] = ""
-      dumpElse e = printf " else {\n%s\n}" $ dump' (indent ++ "  ") e
+      branch :: LabeledStmt -> String
+      branch (LabeledStmt _ _ block@(Block _ _)) = dump' indent block
+      branch stmt = printf "{\n%s\n}" (indent ++ dump' (indent ++ "  ") stmt)
   dump' _ (Goto _ labelIdent) = printf "goto %s;" labelIdent
+  dump' _ (NoOp _) = ";"
+  dump' indent (Block _ stmts) = printf "{\n%s\n%s}" (dump' (indent ++ "  ") stmts) indent
 
 instance StringDump [Stmt] where
-  dump' indent stmts = intercalate "\n" (map ((indent ++) . dump) stmts)
+  dump' indent stmts = intercalate "\n" (map (dump' indent) stmts)
 
 instance StringDump RightExpr where
   dump' _ (Literal _ int) = show int

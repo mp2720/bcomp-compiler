@@ -53,11 +53,13 @@ spec =
           [r|if(a) {
             L: if(b) {
               goto L;
-            } else {
+            }
+            else {
               goto L2;
             }
             *(z + i) = 1;
-          } else {
+          }
+          else {
             a = 1;
           }|]
     it "dangling else" $ do
@@ -66,16 +68,39 @@ spec =
           [r|if((a == 1)) {
             if(b) {
               goto L1;
-            } else {
+            }
+            else {
               goto L2;
             }
+          }
+          else {
+            ;
           }|]
+    it "blocks" $ do
+      t (program <* eof) "{{}{a=1;{z=2;auto b = 9;}};}"
+        `shouldBeIndentAgnostic` Right
+          [r|{
+          {
+            
+          }
+          {
+            a = 1;
+            {
+              z = 2;
+              auto b = 9;
+            }
+          }
+          ;
+        }|]
     it "defs" $ do
-      t (program <* eof) "auto v1;auto v2=1+*2;a[1];a[1]=1;b[]0;c[2]1,2;"
+      t (program <* eof) "auto v1;auto v2=1+*2;a[1];a[1]=1;b[]0;c[2]1,2;{}"
         `shouldBeIndentAgnostic` Right
           [r|auto v1;
           auto v2 = (1 + *2);
           a[1];
           *(a + 1) = 1;
           b[] 0;
-          c[2] 1, 2;|]
+          c[2] 1, 2;
+          {
+            
+          }|]
