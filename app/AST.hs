@@ -4,13 +4,13 @@ module AST
   ( P (..),
     Positioned (..),
     Program (..),
-    LabelIdent,
-    VarIdent,
+    Ident,
     Stmt (..),
     LabeledStmt (..),
     ExecStmt (..),
     RightExpr (..),
     BinOp (..),
+    RelOp (..),
     UnaryOp (..),
     LeftExpr (..),
     StringDump (dump),
@@ -33,23 +33,21 @@ instance Show P where
 newtype Program = Program [Stmt]
   deriving (Show, Eq)
 
-type LabelIdent = String
-
-type VarIdent = String
+type Ident = String
 
 data Stmt
   = ExecStmt P LabeledStmt
-  | VarDef P VarIdent (Maybe RightExpr)
-  | ArrDef P VarIdent (Maybe Integer) [Integer]
+  | VarDef P Ident (Maybe RightExpr)
+  | ArrDef P Ident (Maybe Integer) [Integer]
   deriving (Show, Eq)
 
-data LabeledStmt = LabeledStmt P (Maybe LabelIdent) ExecStmt
+data LabeledStmt = LabeledStmt P (Maybe Ident) ExecStmt
   deriving (Show, Eq)
 
 data ExecStmt
   = Assign P LeftExpr RightExpr
   | If P RightExpr LabeledStmt LabeledStmt
-  | Goto P LabelIdent
+  | Goto P Ident
   | Block P [Stmt]
   | NoOp P
   deriving (Show, Eq)
@@ -57,9 +55,10 @@ data ExecStmt
 data RightExpr
   = Literal P Integer
   | BinOpApp P RightExpr BinOp RightExpr
+  | RelOpApp P RightExpr RelOp RightExpr
   | UnaryOpApp P UnaryOp RightExpr
   | AddressOf P LeftExpr
-  | Sizeof P VarIdent
+  | Sizeof P Ident
   | LeftExpr P LeftExpr
   deriving (Show, Eq)
 
@@ -68,7 +67,10 @@ data BinOp
   | Sub
   | BitOr
   | BitAnd
-  | Eq
+  deriving (Show, Eq)
+
+data RelOp
+  = Equals
   | NotEq
   | Gt
   | Geq
@@ -84,7 +86,7 @@ data UnaryOp = BitNot | Negate
   deriving (Show, Eq)
 
 data LeftExpr
-  = Var P VarIdent
+  = Var P Ident
   | PtrDeref P RightExpr
   deriving (Show, Eq)
 
@@ -109,6 +111,7 @@ instance Positioned ExecStmt where
 instance Positioned RightExpr where
   position (Literal p _) = p
   position (BinOpApp p _ _ _) = p
+  position (RelOpApp p _ _ _) = p
   position (UnaryOpApp p _ _) = p
   position (AddressOf p _) = p
   position (Sizeof p _) = p
@@ -170,7 +173,10 @@ instance StringDump RightExpr where
         Sub -> "-"
         BitOr -> "|"
         BitAnd -> "&"
-        Eq -> "=="
+  dump' _ (RelOpApp _ r op l) = printf "(%s %s %s)" (dump r) dumpOp (dump l)
+    where
+      dumpOp = case op of
+        Equals -> "=="
         NotEq -> "!="
         Gt -> ">"
         Geq -> ">="

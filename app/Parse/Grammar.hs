@@ -97,9 +97,10 @@ rexpr = binOp2
   where
     binOp2 =
       leftAssoc
+        RelOpApp
         binOp1
         $ operators
-          [ (Eq, operator "=="),
+          [ (Equals, operator "=="),
             (NotEq, operator "!="),
             (Lt, operator "<"),
             (Leq, operator "<="),
@@ -112,13 +113,14 @@ rexpr = binOp2
           ]
     binOp1 =
       leftAssoc
+        BinOpApp
         binOp0
         $ operators
           [ (BitOr, operator "|"),
             (Add, operator "+"),
             (Sub, operator "-")
           ]
-    binOp0 = leftAssoc atomExpr $ operators [(BitAnd, operator "&")]
+    binOp0 = leftAssoc BinOpApp atomExpr $ operators [(BitAnd, operator "&")]
     -- for later use
     -- rightAssoc opnd ops =
     --   try
@@ -130,10 +132,10 @@ rexpr = binOp2
     --         return $ BinOpApp p l op r
     --     )
     --     <|> opnd
-    leftAssoc opnd ops = do
+    leftAssoc app opnd ops = do
       headOpnd <- opnd
       tailOpnds <- many ((,,) <$> pos <*> ops <*> opnd)
-      return $ foldl' (\l (rPos, rOp, rOpnd) -> BinOpApp rPos l rOp rOpnd) headOpnd tailOpnds
+      return $ foldl' (\l (rPos, rOp, rOpnd) -> app rPos l rOp rOpnd) headOpnd tailOpnds
 
 lexpr :: Rule LeftExpr
 lexpr =
