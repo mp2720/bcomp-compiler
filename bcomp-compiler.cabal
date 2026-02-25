@@ -20,11 +20,24 @@ build-type:         Simple
 common shared-properties
     ghc-options: -Wall
     default-language: Haskell2010
-    build-depends:    base ^>= 4.17.2.1
-
+    build-depends:
+        base ^>= 4.18.3.0,
+        transformers ^>= 0.6.3.0,
+        containers ^>= 0.8,
+        basic-lens ^>= 0.0.2
 library
     import: shared-properties
-    exposed-modules: Parse.Combinators Parse.Lexer Parse.Grammar AST
+    exposed-modules:
+        Parse.Combinators
+        Parse.Lexer
+        Parse.Grammar
+        AST
+    other-modules:
+        IR
+        IR.Scope
+        IR.FromAST
+        Diagnostics
+
     hs-source-dirs: app
 
 executable bcomp-compiler
@@ -32,7 +45,15 @@ executable bcomp-compiler
     main-is:          Main.hs
     hs-source-dirs:   app
     build-depends: bcomp-compiler
-    other-modules: Parse.Combinators Parse.Lexer Parse.Grammar AST
+    other-modules:
+        Parse.Combinators
+        Parse.Lexer
+        Parse.Grammar
+        AST
+        IR
+        IR.Scope
+        IR.FromAST
+        Diagnostics
 
 Test-suite test
     import: shared-properties
