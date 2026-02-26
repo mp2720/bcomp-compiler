@@ -27,15 +27,17 @@ data Pass = Pass
 
 -- | If diagnostics list has errors, then the program is malformed.
 -- And the output could be bogus only if the program is malformed.
-convert :: A.Program -> ([Diagnostic], LinearProgram)
+convert :: A.Program -> Either [Diagnostic] LinearProgram
 convert ast =
-  ( reverse $ diagnostics pass,
-    LinearProgram
-      { progInstrs = reverse $ instrs pass,
-        progVars = vars pass,
-        progLabels = map fst $ labels pass
-      }
-  )
+  case diagnostics pass of
+    [] ->
+      Right $
+        LinearProgram
+          { progInstrs = reverse $ instrs pass,
+            progVars = vars pass,
+            progLabels = map fst $ labels pass
+          }
+    diagns -> Left $ reverse diagns
   where
     (_, pass) =
       runState
@@ -77,55 +79,42 @@ type ScopeLens s = Lens Pass Pass (Scope s) (Scope s)
 
 type SymbolsLens s = Lens Pass Pass (Symbols s) (Symbols s)
 
-declSymbol :: ScopeLens s -> SymbolsLens s -> A.Ident -> s -> A.P -> State Pass FlatIdent
-declSymbol scopeLens symbolsLens ident s pos = do
+declSymbol :: ScopeLens s -> SymbolsLens s -> Maybe (A.P, A.Ident) -> s -> State Pass FlatIdent
+declSymbol scopeLens symbolsLens mbPosIdent s = do
   state <- get
   let scope = Lens.view scopeLens state
-  case Scope.lookupSymbol scope ident of
-    Just (flatId, _) -> do
-      reportDiagn $ Error pos (printf "symbol %s is redeclared" ident)
-      return flatId
-    Nothing -> do
-      let (flatId, modifiedScope) = Scope.declSymbol scope ident s
-      modify $ Lens.set scopeLens modifiedScope
-      modify $ Lens.over symbolsLens ((flatId, s) :)
-      return flatId
-
-declLabel :: A.Ident -> A.P -> State Pass FlatIdent
-declLabel ident = declSymbol $(Lens.field 'labelsScope) $(Lens.field 'labels) ident ()
-
-declVar :: A.Ident -> VarKind -> A.P -> State Pass FlatIdent
-declVar = declSymbol $(Lens.field 'varsScope) $(Lens.field 'vars)
-
-declSyntheticSymbol :: ScopeLens s -> SymbolsLens s -> s -> State Pass FlatIdent
-declSyntheticSymbol scopeLens symbolsLens s = do
-  state <- get
-  let scope = Lens.view scopeLens state
-  let (flatId, modifiedScope) = Scope.declSyntheticSymbol scope s
+  case mbPosIdent of
+    Just (pos, ident) -> do
+      case Scope.lookupSymbol scope ident of
+        Just _ -> do
+          reportDiagn $ Error pos (printf "symbol %s is redeclared" ident)
+        Nothing -> return ()
+    Nothing -> return ()
+  let (flatId, modifiedScope) = Scope.declSymbol scope (fmap snd mbPosIdent) s
   modify $ Lens.set scopeLens modifiedScope
   modify $ Lens.over symbolsLens ((flatId, s) :)
   return flatId
 
-declSyntheticLabel :: State Pass FlatIdent
-declSyntheticLabel = declSyntheticSymbol $(Lens.field 'labelsScope) $(Lens.field 'labels) ()
+declLabel :: Maybe (A.P, A.Ident) -> State Pass FlatIdent
+declLabel mbPosIdent = declSymbol $(Lens.field 'labelsScope) $(Lens.field 'labels) mbPosIdent ()
 
-declSyntheticVar :: VarKind -> State Pass FlatIdent
-declSyntheticVar = declSyntheticSymbol $(Lens.field 'varsScope) $(Lens.field 'vars)
+declVar :: Maybe (A.P, A.Ident) -> VarKind -> State Pass FlatIdent
+declVar = declSymbol $(Lens.field 'varsScope) $(Lens.field 'vars)
 
-resolveSymbol :: ScopeLens s -> (FlatIdent, s) -> A.Ident -> A.P -> State Pass (FlatIdent, s)
-resolveSymbol scopeLens default_ ident pos = do
+resolveSymbol :: ScopeLens s -> s -> A.Ident -> A.P -> State Pass (FlatIdent, s)
+resolveSymbol scopeLens defaultS ident pos = do
   state <- get
-  case Scope.lookupSymbol (Lens.view scopeLens state) ident of
+  case Scope.lookupSymbolRec (Lens.view scopeLens state) ident of
     Nothing -> do
       reportDiagn $ Error pos (printf "unknown symbol %s" ident)
-      return default_
+      return (BogusIdent ident, defaultS)
     Just entry -> return entry
 
 resolveVar :: A.Ident -> A.P -> State Pass (FlatIdent, VarKind)
-resolveVar ident = resolveSymbol $(Lens.field 'varsScope) (FlatIdent ident, Bogus) ident
+resolveVar = resolveSymbol $(Lens.field 'varsScope) BogusKind
 
-resolveLabel :: String -> A.P -> State Pass (FlatIdent, ())
-resolveLabel ident = resolveSymbol $(Lens.field 'labelsScope) (FlatIdent ident, ()) ident
+resolveLabel :: String -> A.P -> State Pass FlatIdent
+resolveLabel ident pos = fst <$> resolveSymbol $(Lens.field 'labelsScope) () ident pos
 
 -- Pass 1 (collect labels)
 
@@ -136,7 +125,7 @@ pass1Stmt :: A.Stmt -> State Pass ()
 pass1Stmt (A.ExecStmt _ (A.LabeledStmt pos mbIdent execStmt)) = do
   case mbIdent of
     Nothing -> pure ()
-    Just ident -> void $ declLabel ident pos
+    Just ident -> void $ declLabel (Just (pos, ident))
   case execStmt of
     A.Block _ stmts -> forM_ stmts pass1Stmt
     _ -> return ()
@@ -150,8 +139,7 @@ pass2Program (A.Program stmts) = forM_ stmts pass2Stmt
 pass2Stmt :: A.Stmt -> State Pass ()
 pass2Stmt (A.ExecStmt _ stmt) = pass2LabeledStmt stmt
 pass2Stmt (A.VarDef pos ident mbRexpr) = do
-  flatId <- declVar ident Scalar pos
-  -- modify $ Lens.over $(Lens.field 'vars) ((flatId, Scalar) :)
+  flatId <- declVar (Just (pos, ident)) Scalar
   forM_ mbRexpr (pass2AssignToVar flatId)
 pass2Stmt (A.ArrDef pos ident mbExplicitSize elements) = do
   let lenElements = fromIntegral $ length elements
@@ -167,11 +155,16 @@ pass2Stmt (A.ArrDef pos ident mbExplicitSize elements) = do
 
   let elementsPadded = take (fromIntegral size) (elements ++ repeat 0)
 
-  flatId <- declVar ident (Array elementsPadded) pos
+  flatId <- declVar (Just (pos, ident)) (Array elementsPadded)
   modify $ Lens.over $(Lens.field 'vars) ((flatId, Array elementsPadded) :)
 
 pass2LabeledStmt :: A.LabeledStmt -> State Pass ()
-pass2LabeledStmt (A.LabeledStmt _ _ stmt) = do
+pass2LabeledStmt (A.LabeledStmt pos mbIdent stmt) = do
+  case mbIdent of
+    Just ident -> do
+      label <- resolveLabel ident pos
+      emitLabelHere $ Label label
+    Nothing -> pure ()
   pass2ExecStmt stmt
 
 pass2ExecStmt :: A.ExecStmt -> State Pass ()
@@ -179,13 +172,17 @@ pass2ExecStmt (A.Assign _ lhs rhs) = pass2Assign lhs rhs
 pass2ExecStmt (A.If _ cond then_ else_) =
   pass2If cond (pass2LabeledStmt then_) (pass2LabeledStmt else_)
 pass2ExecStmt (A.Goto pos label) = do
-  (flatLabel, _) <- resolveLabel label pos -- resolveSymbol $(Lens.field 'labelsScope) (FlatIdent label, ()) label pos
+  flatLabel <- resolveLabel label pos
   emitBranch $ Branch $ Label flatLabel
   return ()
 pass2ExecStmt (A.Block _ stmts) = do
   state <- get
-  let (childVarScope, parentVarScopeUpd) = Scope.mkChild (varsScope state)
-  let stateUpd = execState (forM_ stmts pass2Stmt) state {varsScope = childVarScope}
+  let pVarScope = varsScope state
+
+  let chVarScope = Scope.startChild pVarScope
+  let stateUpd = execState (forM_ stmts pass2Stmt) state {varsScope = chVarScope}
+  let parentVarScopeUpd = Scope.endChild pVarScope chVarScope
+
   put stateUpd {varsScope = parentVarScopeUpd}
 pass2ExecStmt (A.NoOp _) = return ()
 
@@ -211,9 +208,9 @@ pass2AssignToVar varFlatId rexpr = do
 
 pass2If :: A.RightExpr -> State Pass () -> State Pass () -> State Pass ()
 pass2If cond then_ else_ = do
-  labelThenId <- declSyntheticLabel
+  labelThenId <- declLabel Nothing
   let labelThen = Label labelThenId
-  labelElseId <- declSyntheticLabel
+  labelElseId <- declLabel Nothing
   let labelElse = Label labelElseId
 
   emitCond cond labelThen labelElse
@@ -249,7 +246,7 @@ pass2RightExpr rexpr = do
   -- tmp var could be not referenced at all
   -- TODO: OPT: optimize tmpVar out if not used
 
-  tmpVarFlatId <- declSyntheticVar Scalar
+  tmpVarFlatId <- declVar Nothing Scalar
   p rexpr tmpVarFlatId
   where
     p (A.Literal _ lit) _ =
@@ -295,7 +292,7 @@ pass2RightExpr rexpr = do
       return $ case varKind of
         Array _ -> Address varFlatId
         Scalar -> Var varFlatId
-        Bogus -> Var varFlatId
+        BogusKind -> Var varFlatId
     lexpr (A.PtrDeref _ ptrExpr) tmpVar = do
       src <- pass2RightExpr ptrExpr
       emitSeq $ Load tmpVar src
@@ -306,7 +303,7 @@ expectArray ident pos Scalar = do
   reportDiagn (Error pos $ printf "Variable %s has scalar kind, but an array was expected" ident)
   return []
 expectArray _ _ (Array elements) = pure elements
-expectArray _ _ Bogus = pure []
+expectArray _ _ BogusKind = pure []
 
 expectScalar :: A.Ident -> A.P -> VarKind -> State Pass ()
 expectScalar ident pos (Array _) =

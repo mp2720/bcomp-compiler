@@ -7,8 +7,8 @@ module IR.Scope
     lookupSymbol,
     lookupSymbolRec,
     declSymbol,
-    declSyntheticSymbol,
-    mkChild,
+    startChild,
+    endChild,
   )
 where
 
@@ -17,22 +17,21 @@ import Control.Applicative ((<|>))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import IR (FlatIdent (..))
-import Text.Printf (printf)
 
 data Scope s
   = Scope
-  { scopeId :: FlatIdent,
-    symbols :: Map A.Ident (FlatIdent, s),
+  { symbols :: Map A.Ident (FlatIdent, s),
     parent :: Maybe (Scope s),
-    uniqueCnt :: Integer
+    uniqueCnt :: Int
   }
 
 empty :: Scope s
-empty = Scope {scopeId = FlatIdent "", symbols = Map.empty, parent = Nothing, uniqueCnt = 0}
-
-mkFlatIdent :: Scope s -> String -> FlatIdent
-mkFlatIdent Scope {parent = Nothing} ident = FlatIdent ident
-mkFlatIdent Scope {parent = Just _, scopeId} ident = FlatIdent $ printf "%s/%s" (show scopeId) ident
+empty =
+  Scope
+    { symbols = Map.empty,
+      parent = Nothing,
+      uniqueCnt = 0
+    }
 
 lookupSymbol' :: (Scope s -> A.Ident -> Maybe (FlatIdent, s)) -> Scope s -> A.Ident -> Maybe (FlatIdent, s)
 lookupSymbol' rec Scope {symbols, parent} ident =
@@ -49,29 +48,23 @@ lookupSymbol = lookupSymbol' (const2 Nothing)
 lookupSymbolRec :: Scope s -> A.Ident -> Maybe (FlatIdent, s)
 lookupSymbolRec = lookupSymbol' lookupSymbolRec
 
-declSymbol :: Scope s -> A.Ident -> s -> (FlatIdent, Scope s)
-declSymbol scope@Scope {symbols} ident s =
-  (flatIdent, scope {symbols = Map.insert ident (flatIdent, s) symbols})
-  where
-    flatIdent = mkFlatIdent scope ident
-
-declSyntheticSymbol :: Scope s -> s -> (FlatIdent, Scope s)
-declSyntheticSymbol scope@Scope {uniqueCnt} =
-  declSymbol scope {uniqueCnt = uniqueCnt + 1} (show uniqueCnt)
-
-mkChild ::
-  Scope s ->
-  -- | Pair of (child, parent)
-  (Scope s, Scope s)
-mkChild parent@Scope {uniqueCnt = parentCnt} =
-  ( Scope
-      { scopeId = childFlatId,
-        symbols = Map.empty,
-        parent = Just parent,
-        uniqueCnt = 0
-      },
-    parentUpd
+declSymbol :: Scope s -> Maybe A.Ident -> s -> (FlatIdent, Scope s)
+declSymbol scope@Scope {symbols, uniqueCnt} mbIdent s =
+  ( flatId,
+    scope
+      { symbols = maybe symbols (\ident -> Map.insert ident (flatId, s) symbols) mbIdent,
+        uniqueCnt = uniqueCnt + 1
+      }
   )
   where
-    childFlatId = mkFlatIdent parent (show parentCnt)
-    parentUpd = parent {uniqueCnt = parentCnt + 1}
+    flatId = FlatIdent uniqueCnt mbIdent
+
+startChild :: Scope s -> Scope s
+startChild parent@Scope {uniqueCnt = pUniqueCnt} =
+  empty
+    { uniqueCnt = pUniqueCnt,
+      parent = Just parent
+    }
+
+endChild :: Scope s -> Scope s -> Scope s
+endChild parent _child@Scope {uniqueCnt = chUniqueCnt} = parent {uniqueCnt = chUniqueCnt}

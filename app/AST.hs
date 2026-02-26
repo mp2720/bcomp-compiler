@@ -126,6 +126,9 @@ class StringDump a where
   dump :: a -> String
   dump = dump' ""
 
+-- TODO: indentation is broken in dump and the code looks awful
+-- TODO: maybe use Reader and Writer monad to simplify?
+
 instance StringDump Program where
   dump' _ (Program stmts) = dump stmts
 

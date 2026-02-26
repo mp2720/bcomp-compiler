@@ -2,10 +2,17 @@
 
 module IR where
 
+import qualified AST as A
 import Data.List (intercalate)
 import Text.Printf (printf)
 
-newtype FlatIdent = FlatIdent String
+data FlatIdent
+  = FlatIdent
+      { intId :: Int,
+        origId :: Maybe A.Ident
+      }
+  | -- | This should never appear in successfully emitted IR
+    BogusIdent A.Ident
 
 data Operand = Var FlatIdent | Const Integer | Address FlatIdent
 
@@ -52,7 +59,7 @@ data VarKind
   = Scalar
   | Array [Integer]
   | -- | This should never appear in successfully emitted IR
-    Bogus
+    BogusKind
 
 data LinearProgram = LinearProgram
   { progInstrs :: [LinearInstr],
@@ -61,7 +68,9 @@ data LinearProgram = LinearProgram
   }
 
 instance Show FlatIdent where
-  show (FlatIdent ident) = ident
+  show (FlatIdent intId Nothing) = show intId
+  show (FlatIdent intId (Just origId)) = printf "%d[%s]" intId origId
+  show (BogusIdent origId) = printf "UNRESOLVED[%s]" origId
 
 instance Show Operand where
   show (Var ident) = printf "%%%s" (show ident)
@@ -115,7 +124,7 @@ instance Show BranchInstr where
     printf "br (%s ^>= %s) %s else %s" (show opnd1) (show opnd2) (show then_) (show else_)
 
 instance Show LinearInstr where
-  show (PlaceLabel label) = show label ++ ":"
+  show (PlaceLabel (Label label)) = show label ++ ":"
   show (LBranchInstr instr) = "    " ++ show instr
   show (LSeqInstr instr) = "    " ++ show instr
 
@@ -126,4 +135,4 @@ instance Show LinearProgram where
       codeString = intercalate "\n" $ map show progInstrs
       showVar (ident, Scalar) = show ident
       showVar (ident, Array elems) = printf "%s {%s}" (show ident) (intercalate "," (map show elems))
-      showVar (ident, Bogus) = printf "%s BOGUS" (show ident)
+      showVar (ident, BogusKind) = printf "%s BOGUS" (show ident)
