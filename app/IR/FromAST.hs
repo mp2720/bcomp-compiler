@@ -27,17 +27,15 @@ data Pass = Pass
 
 -- | If diagnostics list has errors, then the program is malformed.
 -- And the output could be bogus only if the program is malformed.
-convert :: A.Program -> Either [Diagnostic] LinearProgram
+convert :: A.Program -> ([Diagnostic], LinearProgram)
 convert ast =
-  case diagnostics pass of
-    [] ->
-      Right $
-        LinearProgram
-          { progInstrs = reverse $ instrs pass,
-            progVars = vars pass,
-            progLabels = map fst $ labels pass
-          }
-    diagns -> Left $ reverse diagns
+  ( reverse $ diagnostics pass,
+    LinearProgram
+      { progInstrs = reverse $ instrs pass,
+        progVars = vars pass,
+        progLabels = map fst $ labels pass
+      }
+  )
   where
     (_, pass) =
       runState

@@ -22,25 +22,21 @@ compile = do
     [sourcePath] -> liftIO $ readFile sourcePath
     _ -> throwE "invalid usage"
 
+  -- TODO: make output path configurable
+  liftIO $ createDirectoryIfMissing True "output"
+
   (ast, _) <-
     except $
       first
         (printf "syntax error at %s" . show . lexerPosition)
         (runParser (program <* eof) (regularLexerState source))
-
-  liftIO $ createDirectoryIfMissing True "output"
-
-  -- TODO: make output path configurable
-
   liftIO $ writeFile "output/prog.ast" (dump ast)
 
-  prog <-
-    except $
-      first
-        (intercalate "\n" . map show)
-        (convert ast)
-
+  let (diagnostics, prog) = convert ast
   liftIO $ writeFile "output/prog.ir" (show prog)
+  case diagnostics of
+    [] -> pure ()
+    _ -> throwE $ intercalate "\n" $ map show diagnostics
 
 main :: IO ()
 main = do
