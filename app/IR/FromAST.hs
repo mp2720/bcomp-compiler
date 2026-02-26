@@ -163,6 +163,7 @@ pass2LabeledStmt (A.LabeledStmt pos mbIdent stmt) = do
   case mbIdent of
     Just ident -> do
       label <- resolveLabel ident pos
+      emitBranch $ Branch $ Label label
       emitLabelHere $ Label label
     Nothing -> pure ()
   pass2ExecStmt stmt
@@ -212,12 +213,23 @@ pass2If cond then_ else_ = do
   let labelThen = Label labelThenId
   labelElseId <- declLabel Nothing
   let labelElse = Label labelElseId
+  labelIfEndId <- declLabel Nothing
+  let labelIfEnd = Label labelIfEndId
+
+  -- TODO: OPT: a lot of redundant fallthrough labels and branches are emitted for nested ifs.
 
   emitCond cond labelThen labelElse
   emitLabelHere labelThen
-  then_
+  ( do
+      then_
+      emitBranch $ Branch labelIfEnd
+    )
   emitLabelHere labelElse
-  else_
+  ( do
+      else_
+      emitBranch $ Branch labelIfEnd
+    )
+  emitLabelHere labelIfEnd
   where
     emitCond (A.RelOpApp _ leftExpr op rightExpr) labelThen labelElse = do
       l <- pass2RightExpr leftExpr
