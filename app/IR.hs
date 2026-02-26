@@ -41,13 +41,13 @@ data BinOp
 -- TODO: This representation is a good starting point, but it could be bad for
 -- TODO: data flow analysis of conditions.
 data BranchInstr
-  = Branch Label
-  | BranchIfZero Operand Label Label
-  | BranchIfEq Operand Operand Label Label
-  | BranchIfLt Operand Operand Label Label
-  | BranchIfGe Operand Operand Label Label
-  | BranchIfUnsignedLt Operand Operand Label Label
-  | BranchIfUnsignedGe Operand Operand Label Label
+  = Br Label
+  | BrIfZero Operand Label Label
+  | BrIfEq Operand Operand Label Label
+  | BrIfLt Operand Operand Label Label
+  | BrIfGe Operand Operand Label Label
+  | BrIfUnsignedLt Operand Operand Label Label
+  | BrIfUnsignedGe Operand Operand Label Label
 
 -- | Linear IR
 data LinearInstr
@@ -69,8 +69,8 @@ data LinearProgram = LinearProgram
 
 instance Show FlatIdent where
   show (FlatIdent intId Nothing) = show intId
-  show (FlatIdent intId (Just origId)) = printf "%d[%s]" intId origId
-  show (BogusIdent origId) = printf "UNRESOLVED[%s]" origId
+  show (FlatIdent intId (Just origId)) = printf "%d{%s}" intId origId
+  show (BogusIdent origId) = printf "UNRESOLVED{%s}" origId
 
 instance Show Operand where
   show (Var ident) = printf "%%%s" (show ident)
@@ -95,32 +95,32 @@ instance Show BinOp where
   show BitAnd = "&"
 
 instance Show BranchInstr where
-  show (Branch label) = printf "br %s" (show label)
-  show (BranchIfZero opnd then_ else_) = printf "br (%s == 0) %s else %s" (show opnd) (show then_) (show else_)
-  show (BranchIfEq opnd1 opnd2 then_ else_) =
+  show (Br label) = printf "br %s" (show label)
+  show (BrIfZero opnd then_ else_) = printf "br (%s == 0) %s else %s" (show opnd) (show then_) (show else_)
+  show (BrIfEq opnd1 opnd2 then_ else_) =
     printf
       "br (%s == %s) %s else %s"
       (show opnd1)
       (show opnd2)
       (show then_)
       (show else_)
-  show (BranchIfLt opnd1 opnd2 then_ else_) =
+  show (BrIfLt opnd1 opnd2 then_ else_) =
     printf
       "br (%s < %s) %s else %s"
       (show opnd1)
       (show opnd2)
       (show then_)
       (show else_)
-  show (BranchIfGe opnd1 opnd2 then_ else_) =
+  show (BrIfGe opnd1 opnd2 then_ else_) =
     printf
       "br (%s >= %s) %s else %s"
       (show opnd1)
       (show opnd2)
       (show then_)
       (show else_)
-  show (BranchIfUnsignedLt opnd1 opnd2 then_ else_) =
+  show (BrIfUnsignedLt opnd1 opnd2 then_ else_) =
     printf "br (%s ^< %s) else %s" (show opnd1) (show opnd2) (show then_) (show else_)
-  show (BranchIfUnsignedGe opnd1 opnd2 then_ else_) =
+  show (BrIfUnsignedGe opnd1 opnd2 then_ else_) =
     printf "br (%s ^>= %s) %s else %s" (show opnd1) (show opnd2) (show then_) (show else_)
 
 instance Show LinearInstr where
