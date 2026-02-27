@@ -102,9 +102,9 @@ declSym scopeLens symsLens mbPosIdent s = do
 
 declLabel ::
   Maybe (A.P, A.Ident) ->
-  State Pass FlatIdent
+  State Pass Label
 declLabel mbPosIdent =
-  declSym $(Lens.field 'labelsScope) $(Lens.field 'labels) mbPosIdent ()
+  Label <$> declSym $(Lens.field 'labelsScope) $(Lens.field 'labels) mbPosIdent ()
 
 declVar ::
   Maybe (A.P, A.Ident) ->
@@ -160,7 +160,10 @@ p1LabeledStmt (A.LabeledStmt pos mbIdent execStmt) = do
 -- Pass 2 (collect variables & emit IR)
 
 pass2 :: A.Program -> State Pass ()
-pass2 (A.Program stmts) = forM_ stmts p2Stmt
+pass2 (A.Program stmts) = do
+  start <- declLabel Nothing
+  emitLabel start
+  forM_ stmts p2Stmt
 
 p2Stmt :: A.Stmt -> State Pass ()
 p2Stmt stmt = case stmt of
@@ -236,7 +239,7 @@ p2Assign left right = case left of
 -- | Assign to scalar var.
 p2AssignToVar :: FlatIdent -> A.RightExpr -> State Pass ()
 p2AssignToVar varFlatId rexpr = do
-  -- TODO: OPT: optimize redundant copy emitted from assign
+  -- TODO: OPT: optimize redundant copy emitted for assign
 
   src <- p2RightExpr rexpr
   emitSeq $ Copy varFlatId src
@@ -247,14 +250,9 @@ p2If ::
   State Pass () ->
   State Pass ()
 p2If cond then_ else_ = do
-  labelThenId <- declLabel Nothing
-  let labelThen = Label labelThenId
-
-  labelElseId <- declLabel Nothing
-  let labelElse = Label labelElseId
-
-  labelIfEndId <- declLabel Nothing
-  let labelIfEnd = Label labelIfEndId
+  labelThen <- declLabel Nothing
+  labelElse <- declLabel Nothing
+  labelIfEnd <- declLabel Nothing
 
   -- TODO: OPT: a lot of redundant fallthrough labels and branches are emitted for nested ifs.
 
@@ -276,22 +274,22 @@ p2If cond then_ else_ = do
       r <- p2RightExpr rightExpr
       emitBranch $
         ( case op of
-            A.Equals -> BrIfEq l r
-            A.NotEq -> flip $ BrIfEq l r
-            A.Gt -> flip $ BrIfLt l r
-            A.Geq -> BrIfGe l r
-            A.Lt -> BrIfLt l r
-            A.Leq -> flip $ BrIfGe l r
-            A.UnsignedGt -> flip $ BrIfUnsignedLt l r
-            A.UnsignedGeq -> BrIfUnsignedGe l r
-            A.UnsignedLt -> BrIfUnsignedLt l r
-            A.UnsignedLeq -> flip $ BrIfUnsignedGe l r
+            A.Equals -> BrIf (IfEq l r)
+            A.NotEq -> flip $ BrIf (IfEq l r)
+            A.Gt -> flip $ BrIf (IfLt l r)
+            A.Geq -> BrIf (IfGe l r)
+            A.Lt -> BrIf (IfLt l r)
+            A.Leq -> flip $ BrIf (IfGe l r)
+            A.UnsignedGt -> flip $ BrIf (IfUnsignedLt l r)
+            A.UnsignedGeq -> BrIf (IfUnsignedGe l r)
+            A.UnsignedLt -> BrIf (IfUnsignedLt l r)
+            A.UnsignedLeq -> flip $ BrIf (IfUnsignedGe l r)
         )
           labelThen
           labelElse
     emitCond condExpr labelThen labelElse = do
       condOpnd <- p2RightExpr condExpr
-      emitBranch $ BrIfZero condOpnd labelElse labelThen
+      emitBranch $ BrIf (IfZero condOpnd) labelElse labelThen
 
 p2RightExpr :: A.RightExpr -> State Pass Operand
 p2RightExpr rexpr = do

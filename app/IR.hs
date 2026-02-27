@@ -42,14 +42,16 @@ data BinOp
 -- TODO: data flow analysis of conditions.
 data BranchInstr
   = Br Label
-  | BrIfZero Operand Label Label
-  | BrIfEq Operand Operand Label Label
-  | BrIfLt Operand Operand Label Label
-  | BrIfGe Operand Operand Label Label
-  | BrIfUnsignedLt Operand Operand Label Label
-  | BrIfUnsignedGe Operand Operand Label Label
+  | BrIf BrCond Label Label
 
--- | Linear IR
+data BrCond
+  = IfZero Operand
+  | IfEq Operand Operand
+  | IfLt Operand Operand
+  | IfGe Operand Operand
+  | IfUnsignedLt Operand Operand
+  | IfUnsignedGe Operand Operand
+
 data LinearInstr
   = PlaceLabel Label
   | LBranchInstr BranchInstr
@@ -61,6 +63,9 @@ data VarKind
   | -- | This should never appear in successfully emitted IR
     BogusKind
 
+-- | Linear IR, unless optimized for codegen (the very last step), should not have implicit fallthroughs.
+-- Thus, any label is followed by branch instr, sequential instr, or the end of the program.
+-- And each program should start with a label.
 data LinearProgram = LinearProgram
   { progInstrs :: [LinearInstr],
     progVars :: [(FlatIdent, VarKind)],
@@ -96,32 +101,15 @@ instance Show BinOp where
 
 instance Show BranchInstr where
   show (Br label) = printf "br %s" (show label)
-  show (BrIfZero opnd then_ else_) = printf "br (%s == 0) %s else %s" (show opnd) (show then_) (show else_)
-  show (BrIfEq opnd1 opnd2 then_ else_) =
-    printf
-      "br (%s == %s) %s else %s"
-      (show opnd1)
-      (show opnd2)
-      (show then_)
-      (show else_)
-  show (BrIfLt opnd1 opnd2 then_ else_) =
-    printf
-      "br (%s < %s) %s else %s"
-      (show opnd1)
-      (show opnd2)
-      (show then_)
-      (show else_)
-  show (BrIfGe opnd1 opnd2 then_ else_) =
-    printf
-      "br (%s >= %s) %s else %s"
-      (show opnd1)
-      (show opnd2)
-      (show then_)
-      (show else_)
-  show (BrIfUnsignedLt opnd1 opnd2 then_ else_) =
-    printf "br (%s ^< %s) else %s" (show opnd1) (show opnd2) (show then_) (show else_)
-  show (BrIfUnsignedGe opnd1 opnd2 then_ else_) =
-    printf "br (%s ^>= %s) %s else %s" (show opnd1) (show opnd2) (show then_) (show else_)
+  show (BrIf cond then_ else_) = printf "br %s %s else %s" (show cond) (show then_) (show else_)
+
+instance Show BrCond where
+  show (IfZero opnd) = printf "%s == 0" (show opnd)
+  show (IfEq opnd1 opnd2) = printf "%s == %s" (show opnd1) (show opnd2)
+  show (IfLt opnd1 opnd2) = printf "%s < %s" (show opnd1) (show opnd2)
+  show (IfGe opnd1 opnd2) = printf "%s >= %s" (show opnd1) (show opnd2)
+  show (IfUnsignedLt opnd1 opnd2) = printf "%s ^< %s" (show opnd1) (show opnd2)
+  show (IfUnsignedGe opnd1 opnd2) = printf "%s ^>= %s" (show opnd1) (show opnd2)
 
 instance Show LinearInstr where
   show (PlaceLabel (Label label)) = show label ++ ":"
