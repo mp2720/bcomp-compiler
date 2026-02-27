@@ -6,9 +6,8 @@ module IR.Scope
     empty,
     lookupSymbol,
     lookupSymbolRec,
-    declSymbol,
-    startChild,
-    endChild,
+    addSymbol,
+    mkChild,
   )
 where
 
@@ -16,55 +15,44 @@ import AST qualified as A
 import Control.Applicative ((<|>))
 import Data.Map (Map)
 import Data.Map qualified as Map
-import IR (FlatIdent (..))
+import ID (FlatID (..))
 
 data Scope s
   = Scope
-  { symbols :: Map A.Ident (FlatIdent, s),
-    parent :: Maybe (Scope s),
-    uniqueCnt :: Int
+  { symbolsMap :: Map A.Ident (FlatID, s),
+    parent :: Maybe (Scope s)
   }
 
 empty :: Scope s
 empty =
   Scope
-    { symbols = Map.empty,
-      parent = Nothing,
-      uniqueCnt = 0
+    { symbolsMap = Map.empty,
+      parent = Nothing
     }
 
-lookupSymbol' :: (Scope s -> A.Ident -> Maybe (FlatIdent, s)) -> Scope s -> A.Ident -> Maybe (FlatIdent, s)
-lookupSymbol' rec Scope {symbols, parent} ident =
-  Map.lookup ident symbols
-    <|> ((`rec` ident) =<< parent) -- crazy LSP suggestion (run `rec` if parent is present)
+lookupSymbol' ::
+  (A.Ident -> Scope s -> Maybe (FlatID, s)) ->
+  A.Ident ->
+  Scope s ->
+  Maybe (FlatID, s)
+lookupSymbol' rec ident Scope {symbolsMap, parent} =
+  Map.lookup ident symbolsMap <|> (rec ident =<< parent)
 
 -- | Lookup in the current scope.
-lookupSymbol :: Scope s -> A.Ident -> Maybe (FlatIdent, s)
+lookupSymbol :: A.Ident -> Scope s -> Maybe (FlatID, s)
 lookupSymbol = lookupSymbol' (const2 Nothing)
   where
     const2 a _ _ = a
 
 -- | Lookup recursively.
-lookupSymbolRec :: Scope s -> A.Ident -> Maybe (FlatIdent, s)
+lookupSymbolRec :: A.Ident -> Scope s -> Maybe (FlatID, s)
 lookupSymbolRec = lookupSymbol' lookupSymbolRec
 
-declSymbol :: Scope s -> Maybe A.Ident -> s -> (FlatIdent, Scope s)
-declSymbol scope@Scope {symbols, uniqueCnt} mbIdent s =
-  ( flatId,
-    scope
-      { symbols = maybe symbols (\ident -> Map.insert ident (flatId, s) symbols) mbIdent,
-        uniqueCnt = uniqueCnt + 1
-      }
-  )
-  where
-    flatId = FlatIdent uniqueCnt mbIdent
-
-startChild :: Scope s -> Scope s
-startChild parent@Scope {uniqueCnt = pUniqueCnt} =
-  empty
-    { uniqueCnt = pUniqueCnt,
-      parent = Just parent
+addSymbol :: A.Ident -> FlatID -> s -> Scope s -> Scope s
+addSymbol astID flatID s scope@Scope {symbolsMap} =
+  scope
+    { symbolsMap = Map.insert astID (flatID, s) symbolsMap
     }
 
-endChild :: Scope s -> Scope s -> Scope s
-endChild parent _child@Scope {uniqueCnt = chUniqueCnt} = parent {uniqueCnt = chUniqueCnt}
+mkChild :: Scope s -> Scope s
+mkChild parent = Scope {symbolsMap = Map.empty, parent = Just parent}

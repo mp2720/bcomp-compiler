@@ -9,6 +9,7 @@ import qualified Control.Lens.Basic as Lens
 import Control.Monad (forM_, void)
 import Control.Monad.Trans.State (State, execState, get, modify, put, runState)
 import Diagnostics (Diagnostic (..))
+import ID (FlatID, Symbols, bogusID, emptySymbols, newSymbol)
 import IR
 import IR.Scope (Scope)
 import qualified IR.Scope as Scope
@@ -19,21 +20,21 @@ data Pass = Pass
     diagnostics :: [Diagnostic],
     labelsScope :: Scope (),
     varsScope :: Scope VarKind,
-    vars :: [(FlatIdent, VarKind)],
-    labels :: [(FlatIdent, ())],
+    vars :: Symbols VarKind,
+    labels :: Symbols (),
     -- | Reversed
     instrs :: [LinearInstr]
   }
 
--- | If diagnostics list has errors, then the program is malformed.
--- And the output could be bogus only if the program is malformed.
+-- | Iff the program is malformed, diagnostics list with error is returned and linear program could
+-- be bogus (so it should never be passed further along the compilation steps chain)
 convert :: A.Program -> ([Diagnostic], LinearProgram)
 convert ast =
   ( reverse $ diagnostics pass,
     LinearProgram
       { progInstrs = reverse $ instrs pass,
         progVars = vars pass,
-        progLabels = map fst $ labels pass
+        progLabels = labels pass
       }
   )
   where
@@ -47,8 +48,8 @@ convert ast =
           { diagnostics = [],
             labelsScope = Scope.empty,
             varsScope = Scope.empty,
-            vars = [],
-            labels = [],
+            vars = emptySymbols,
+            labels = emptySymbols,
             instrs = []
           }
 
@@ -71,34 +72,40 @@ emitLabel = emit . PlaceLabel
 
 -- Symbol helpers
 
-type Syms s = [(FlatIdent, s)]
-
 type ScopeLens s = Lens Pass Pass (Scope s) (Scope s)
 
-type SymsLens s = Lens Pass Pass (Syms s) (Syms s)
+type SymsLens s = Lens Pass Pass (Symbols s) (Symbols s)
 
 declSym ::
   ScopeLens s ->
   SymsLens s ->
   Maybe (A.P, A.Ident) ->
   s ->
-  State Pass FlatIdent
+  State Pass FlatID
 declSym scopeLens symsLens mbPosIdent s = do
   state <- get
   let scope = Lens.view scopeLens state
+  let syms = Lens.view symsLens state
 
+  -- Check for redeclaration if the symbol is from AST
   case mbPosIdent of
     Just (pos, ident) -> do
-      case Scope.lookupSymbol scope ident of
+      case Scope.lookupSymbol ident scope of
         Just _ -> do
           reportDiagn $ Error pos (printf "symbol %s is redeclared" ident)
         Nothing -> return ()
     Nothing -> return ()
 
-  let (flatId, modifiedScope) = Scope.declSymbol scope (fmap snd mbPosIdent) s
-  modify $ Lens.set scopeLens modifiedScope
-  modify $ Lens.over symsLens ((flatId, s) :)
-  return flatId
+  let (flatID, updSyms) = newSymbol (snd <$> mbPosIdent) s syms
+  -- Add to scope if the symbol is from AST
+  let updScope = case mbPosIdent of
+        Just (_, astID) -> Scope.addSymbol astID flatID s scope
+        Nothing -> scope
+
+  modify $ Lens.set symsLens updSyms
+  modify $ Lens.set scopeLens updScope
+
+  return flatID
 
 declLabel ::
   Maybe (A.P, A.Ident) ->
@@ -109,7 +116,7 @@ declLabel mbPosIdent =
 declVar ::
   Maybe (A.P, A.Ident) ->
   VarKind ->
-  State Pass FlatIdent
+  State Pass FlatID
 declVar =
   declSym $(Lens.field 'varsScope) $(Lens.field 'vars)
 
@@ -118,22 +125,22 @@ resolveSym ::
   s ->
   A.Ident ->
   A.P ->
-  State Pass (FlatIdent, s)
+  State Pass (FlatID, s)
 resolveSym scopeLens defaultS ident pos = do
   state <- get
-  case Scope.lookupSymbolRec (Lens.view scopeLens state) ident of
+  case Scope.lookupSymbolRec ident (Lens.view scopeLens state) of
     Nothing -> do
       reportDiagn $ Error pos (printf "unknown symbol %s" ident)
-      return (BogusIdent ident, defaultS)
+      return (bogusID, defaultS)
     Just entry -> return entry
 
 resolveVar ::
   A.Ident ->
   A.P ->
-  State Pass (FlatIdent, VarKind)
+  State Pass (FlatID, VarKind)
 resolveVar = resolveSym $(Lens.field 'varsScope) BogusKind
 
-resolveLabel :: String -> A.P -> State Pass FlatIdent
+resolveLabel :: String -> A.P -> State Pass FlatID
 resolveLabel ident pos = fst <$> resolveSym $(Lens.field 'labelsScope) () ident pos
 
 -- Pass 1 (collect labels)
@@ -187,8 +194,9 @@ p2Stmt stmt = case stmt of
 
     let elementsPadded = take (fromIntegral size) (elements ++ repeat 0)
 
-    flatId <- declVar (Just (pos, ident)) (Array elementsPadded)
-    modify $ Lens.over $(Lens.field 'vars) ((flatId, Array elementsPadded) :)
+    _ <- declVar (Just (pos, ident)) (Array elementsPadded)
+
+    return ()
 
 p2LabeledStmt :: A.LabeledStmt -> State Pass ()
 p2LabeledStmt (A.LabeledStmt pos mbIdent stmt) = do
@@ -215,13 +223,14 @@ p2ExecStmt stmt = case stmt of
   --
   (A.Block _ stmts) -> do
     state <- get
-    let pVarScope = varsScope state
-
-    let chVarScope = Scope.startChild pVarScope
-    let stateUpd = execState (forM_ stmts p2Stmt) state {varsScope = chVarScope}
-    let pVarScopeUpd = Scope.endChild pVarScope chVarScope
-
-    put stateUpd {varsScope = pVarScopeUpd}
+    let parentVarsScope = varsScope state
+    let updState =
+          execState
+            (forM_ stmts p2Stmt)
+            state
+              { varsScope = Scope.mkChild $ varsScope state
+              }
+    put updState {varsScope = parentVarsScope}
   --
   (A.NoOp _) -> return ()
 
@@ -237,7 +246,7 @@ p2Assign left right = case left of
     p2AssignToVar varFlatId right
 
 -- | Assign to scalar var.
-p2AssignToVar :: FlatIdent -> A.RightExpr -> State Pass ()
+p2AssignToVar :: FlatID -> A.RightExpr -> State Pass ()
 p2AssignToVar varFlatId rexpr = do
   -- TODO: OPT: optimize redundant copy emitted for assign
 

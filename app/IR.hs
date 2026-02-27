@@ -2,35 +2,27 @@
 
 module IR where
 
-import qualified AST as A
 import Data.List (intercalate)
+import ID (FlatID, Symbols)
 import Text.Printf (printf)
 
-data FlatIdent
-  = FlatIdent
-      { intId :: Int,
-        origId :: Maybe A.Ident
-      }
-  | -- | This should never appear in successfully emitted IR
-    BogusIdent A.Ident
+data Operand = Var FlatID | Const Integer | Address FlatID
 
-data Operand = Var FlatIdent | Const Integer | Address FlatIdent
-
-newtype Label = Label FlatIdent
+newtype Label = Label FlatID
 
 data SeqInstr
   = -- | dst = *src
-    Load FlatIdent Operand
+    Load FlatID Operand
   | -- | dst = src
-    Copy FlatIdent Operand
+    Copy FlatID Operand
   | -- | *dst = src
     Store Operand Operand
   | -- | dst = opnd1 {+ - | &} opnd2
-    BinOp FlatIdent Operand BinOp Operand
+    BinOp FlatID Operand BinOp Operand
   | -- | dst = -src
-    Negate FlatIdent Operand
+    Negate FlatID Operand
   | -- | dst = ~src
-    BitNot FlatIdent Operand
+    BitNot FlatID Operand
 
 data BinOp
   = Add
@@ -66,16 +58,12 @@ data VarKind
 -- | Linear IR, unless optimized for codegen (the very last step), should not have implicit fallthroughs.
 -- Thus, any label is followed by branch instr, sequential instr, or the end of the program.
 -- And each program should start with a label.
+-- And each label, except the start one, is preceded by branch instruction.
 data LinearProgram = LinearProgram
   { progInstrs :: [LinearInstr],
-    progVars :: [(FlatIdent, VarKind)],
-    progLabels :: [FlatIdent]
+    progVars :: Symbols VarKind,
+    progLabels :: Symbols ()
   }
-
-instance Show FlatIdent where
-  show (FlatIdent intId Nothing) = show intId
-  show (FlatIdent intId (Just origId)) = printf "%d{%s}" intId origId
-  show (BogusIdent origId) = printf "UNRESOLVED{%s}" origId
 
 instance Show Operand where
   show (Var ident) = printf "%%%s" (show ident)
@@ -116,11 +104,13 @@ instance Show LinearInstr where
   show (LBranchInstr instr) = "    " ++ show instr
   show (LSeqInstr instr) = "    " ++ show instr
 
+instance Show VarKind where
+  show Scalar = "word"
+  show (Array els) = printf "[%s]" $ intercalate ", " $ map show els
+  show BogusKind = "BOGUS"
+
 instance Show LinearProgram where
   show (LinearProgram {progInstrs, progVars}) = printf "VARS\n%s\nCODE\n%s" varsString codeString
     where
-      varsString = intercalate "\n" $ map (("    " ++) . showVar) progVars
+      varsString = unlines $ map ("  " ++) $ lines (show progVars)
       codeString = intercalate "\n" $ map show progInstrs
-      showVar (ident, Scalar) = show ident
-      showVar (ident, Array elems) = printf "%s {%s}" (show ident) (intercalate "," (map show elems))
-      showVar (ident, BogusKind) = printf "%s BOGUS" (show ident)
