@@ -1,5 +1,6 @@
 module Parse.Grammar
   ( Rule,
+    parseProgram,
     program,
     stmt,
     arrDef,
@@ -15,6 +16,7 @@ where
 import AST
 import Control.Applicative (Alternative (many, some, (<|>)), asum, optional)
 import Data.Foldable (Foldable (foldl'))
+import Diagnostics (Diagnostic (Error))
 import Parse.Combinators
 import Parse.Lexer
 
@@ -31,6 +33,15 @@ Now it lacks:
   - functions
   - switch (not guaranteed to be added)
 -}
+
+-- TODO: sometimes parser spits a syntax error with zero column position.
+-- I understand the logic, but that is not what you would usually expect from a parser.
+-- Not exactly sure if I should consider this a bug, so do some investigation and think about it.
+
+parseProgram :: String -> ([Diagnostic], Program)
+parseProgram s = case runParser (program <* eof) (regularLexerState s) of
+  Left state -> ([Error (lexerPosition state) "syntax error"], Program [])
+  Right (prog, _) -> ([], prog)
 
 program :: Rule Program
 program = Program <$> many stmt
