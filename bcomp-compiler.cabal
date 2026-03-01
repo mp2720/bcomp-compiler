@@ -38,6 +38,10 @@ library
         IR.Scope
         IR.FromAST
         Diagnostics
+        ID
+        CFG
+        CFG.FromIR
+        CFG.Graphviz
 
     hs-source-dirs: app
 
@@ -55,6 +59,10 @@ executable bcomp-compiler
         IR.Scope
         IR.FromAST
         Diagnostics
+        ID
+        CFG
+        CFG.FromIR
+        CFG.Graphviz
 
 Test-suite test
     import: shared-properties

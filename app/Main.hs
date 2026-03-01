@@ -1,11 +1,13 @@
 module Main where
 
 import AST (StringDump (dump))
+import qualified CFG.FromIR
+import qualified CFG.Graphviz
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT (runExceptT), except, throwE)
 import Data.Bifunctor (first)
 import Data.List (intercalate)
-import IR.FromAST (convert)
+import qualified IR.FromAST
 import Parse.Combinators (Parser (runParser), eof)
 import Parse.Grammar (program)
 import Parse.Lexer (lexerPosition, regularLexerState)
@@ -32,11 +34,14 @@ compile = do
         (runParser (program <* eof) (regularLexerState source))
   liftIO $ writeFile "output/prog.ast" (dump ast)
 
-  let (diagnostics, prog) = convert ast
-  liftIO $ writeFile "output/prog.ir" (show prog)
+  let (diagnostics, linProg) = IR.FromAST.convert ast
+  liftIO $ writeFile "output/prog.ir" (show linProg)
   case diagnostics of
     [] -> pure ()
     _ -> throwE $ intercalate "\n" $ map show diagnostics
+
+  let cfg = CFG.FromIR.convert linProg
+  liftIO $ writeFile "output/cfg.dot" (CFG.Graphviz.dump cfg)
 
 main :: IO ()
 main = do
