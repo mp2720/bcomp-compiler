@@ -65,9 +65,9 @@ compile = do
 
   _ <-
     -- Passes
-    passDiagn parseProgram (pp "prog.b" AST.dump) source
-      >>= passDiagn IR.FromAST.convert (pp "prog.ir" show)
-      >>= pass CFG.FromIR.convert (pp "prog.cfg" CFG.Graphviz.dump)
+    passDiagn parseProgram (pp "00_ast.b" AST.dump) source
+      >>= passDiagn IR.FromAST.convert (pp "10_lin.ir" show)
+      >>= pass CFG.FromIR.convert (pp "20_cfg.dot" CFG.Graphviz.dump)
 
   return ()
   where
