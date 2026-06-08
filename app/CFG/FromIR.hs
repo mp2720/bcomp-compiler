@@ -50,7 +50,7 @@ convert (IR.LinearProgram instrs vars linLabels) =
     Conv {curBlk = Nothing, graph = Map.empty, labels = linLabels}
 
 computePreds :: Graph -> Graph
-computePreds og = Map.foldr predsForBlk og og
+computePreds og = Map.foldr predsForBlk og og -- TODO: I don't remember why I put foldr here. Will foldl be any different?
   where
     predsForBlk blk g = case blockOut blk of
       Uncond to -> addPred to g
@@ -69,9 +69,10 @@ computePreds og = Map.foldr predsForBlk og og
 --
 -- The automaton begins with a block that has "start" label.
 --
--- + When encountering a label, it pushes the previous block (if there's one) and creates a new one.
+-- + When encountering a label, it pushes the current block (if there's one) and creates a new one,
+--   replacing the current.
 -- + On a seq instruction, it collects the instr to the current block
---  (or to the new one it created, if there is none).
+--   (or to the new one it created, if there is none).
 -- + On a branch instruction, it pushes the current block (creating a new one if there is none)
 --   to the graph.
 --
@@ -114,7 +115,7 @@ convInstr instrs = forM_ instrs go
                 blockOut = blkOut
               }
         Nothing -> do
-          -- no current block, create new
+          -- no current block, create a new one
           blkID <- state newSyntheticBlk
           return $
             Block

@@ -6,12 +6,13 @@ import qualified IR
 
 data GraphProgram = GraphProgram
   { progBlks :: Graph,
-    progVars :: Symbols IR.VarKind,
+    progVars :: Symbols IR.VarDecl,
     progLabels :: Symbols ()
   }
 
--- | Block has the same int ID as its label.
--- It is used as key in graph.
+-- | Block has the same int ID as its label, if it has the one associated with it.
+-- Otherwise the block is called synthetic and has a synthetic id.
+-- Id is used as key in graph.
 type BlockID = Int
 
 data Block = Block

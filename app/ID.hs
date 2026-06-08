@@ -11,6 +11,8 @@ where
 
 import qualified AST as A
 import Data.List (intercalate)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Text.Printf (printf)
 
 data FlatID
@@ -28,18 +30,18 @@ bogusID :: FlatID
 bogusID = FlatID (-1) (Just "BOGUS")
 
 data Symbols s = Symbols
-  { symbols :: [(FlatID, s)],
+  { symbols :: Map Int (FlatID, s),
     uniqueCnt :: Int
   }
 
 emptySymbols :: Symbols s
-emptySymbols = Symbols [] 0
+emptySymbols = Symbols Map.empty 0
 
 newSymbol :: Maybe A.Ident -> s -> Symbols s -> (FlatID, Symbols s)
 newSymbol astID s Symbols {symbols, uniqueCnt} =
   ( flatID,
     Symbols
-      { symbols = (flatID, s) : symbols,
+      { symbols = Map.insert (intID flatID) (flatID, s) symbols,
         uniqueCnt = uniqueCnt + 1
       }
   )
@@ -47,6 +49,6 @@ newSymbol astID s Symbols {symbols, uniqueCnt} =
     flatID = FlatID uniqueCnt astID
 
 instance (Show s) => Show (Symbols s) where
-  show (Symbols {symbols}) = intercalate "\n" $ map showSym symbols
+  show (Symbols {symbols}) = intercalate "\n" $ map showSym $ Map.elems symbols
     where
       showSym (flatID, s) = printf "%s %s" (show flatID) (show s)

@@ -3,7 +3,7 @@ module Diagnostics (Diagnostic (..), haveErrors) where
 import qualified AST as A
 import Text.Printf (printf)
 
-data Diagnostic = Error A.P String | Warning A.P String
+data Diagnostic = Error (Maybe A.P) String | Warning (Maybe A.P) String
 
 haveErrors :: [Diagnostic] -> Bool
 haveErrors = any isError
@@ -12,5 +12,9 @@ haveErrors = any isError
     isError (Warning _ _) = False
 
 instance Show Diagnostic where
-  show (Error pos msg) = printf "error at %s: %s" (show pos) msg
-  show (Warning pos msg) = printf "warning at %s: %s" (show pos) msg
+  show msg = case msg of
+    (Error pos text) -> printf "error%s: %s" (showPos pos) text
+    (Warning pos text) -> printf "warning%s: %s" (showPos pos) text
+    where
+      showPos (Just pos) = printf " at %s" (show pos)
+      showPos Nothing = ""

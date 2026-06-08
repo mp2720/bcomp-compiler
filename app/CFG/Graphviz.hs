@@ -11,18 +11,21 @@ import qualified IR
 import Text.Printf (printf)
 
 -- Style is based on LLVM CFG
--- Dark theme: https://cprimozic.net/notes/posts/basic-graphviz-dark-theme-config
+-- Dark theme source: https://cprimozic.net/notes/posts/basic-graphviz-dark-theme-config
 
 dump :: GraphProgram -> String
 dump GraphProgram {progBlks, progVars} =
   printf "digraph {\n%s%s%s\n}" darkTheme vars (intercalate "\n" $ map gBlk $ Map.elems progBlks)
   where
     vars :: String
-    vars = printf "vars[shape=record,style=dashed,fontname=\"Courier\",label=\"%s\"];\n" (intercalate "\\l" $ map (escRec . var) $ symbols progVars)
+    vars =
+      printf
+        "vars[shape=record,style=dashed,fontname=\"Courier\",label=\"%s\"];\n"
+        (intercalate "\\l" $ map (escRec . var) $ Map.elems $ symbols progVars)
 
-    var (ident, IR.Scalar) = show ident
-    var (ident, IR.Array els) = printf "%s[%d]" (show ident) (length els)
-    var (ident, IR.BogusKind) = printf "%s BOGUS" (show ident)
+    var (ident, IR.VarDecl _ IR.Scalar) = show ident
+    var (ident, IR.VarDecl _ (IR.Array els)) = printf "%s[%d]" (show ident) (length els)
+    var (ident, IR.VarDecl _ IR.BogusKind) = printf "%s BOGUS" (show ident)
 
     gBlk Block {blockFlatID, blockCode, blockOut} =
       node ++ edges

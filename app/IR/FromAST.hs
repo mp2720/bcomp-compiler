@@ -19,8 +19,8 @@ data Pass = Pass
   { -- | Reversed
     diagnostics :: [Diagnostic],
     labelsScope :: Scope (),
-    varsScope :: Scope VarKind,
-    vars :: Symbols VarKind,
+    varsScope :: Scope VarDecl,
+    vars :: Symbols VarDecl,
     labels :: Symbols (),
     -- | Reversed
     instrs :: [LinearInstr]
@@ -92,7 +92,7 @@ declSym scopeLens symsLens mbPosIdent s = do
     Just (pos, ident) -> do
       case Scope.lookupSymbol ident scope of
         Just _ -> do
-          reportDiagn $ Error pos (printf "symbol %s is redeclared" ident)
+          reportDiagn $ Error (Just pos) (printf "symbol %s is redeclared" ident)
         Nothing -> return ()
     Nothing -> return ()
 
@@ -117,8 +117,12 @@ declVar ::
   Maybe (A.P, A.Ident) ->
   VarKind ->
   State Pass FlatID
-declVar =
-  declSym $(Lens.field 'varsScope) $(Lens.field 'vars)
+declVar mbPosIdent varKind =
+  declSym
+    $(Lens.field 'varsScope)
+    $(Lens.field 'vars)
+    mbPosIdent
+    (VarDecl (fst <$> mbPosIdent) varKind)
 
 resolveSym ::
   ScopeLens s ->
@@ -130,15 +134,15 @@ resolveSym scopeLens defaultS ident pos = do
   state <- get
   case Scope.lookupSymbolRec ident (Lens.view scopeLens state) of
     Nothing -> do
-      reportDiagn $ Error pos (printf "unknown symbol %s" ident)
+      reportDiagn $ Error (Just pos) (printf "unknown symbol %s" ident)
       return (bogusID, defaultS)
     Just entry -> return entry
 
 resolveVar ::
   A.Ident ->
   A.P ->
-  State Pass (FlatID, VarKind)
-resolveVar = resolveSym $(Lens.field 'varsScope) BogusKind
+  State Pass (FlatID, VarDecl)
+resolveVar = resolveSym $(Lens.field 'varsScope) (VarDecl Nothing BogusKind)
 
 resolveLabel :: String -> A.P -> State Pass FlatID
 resolveLabel ident pos = fst <$> resolveSym $(Lens.field 'labelsScope) () ident pos
@@ -187,7 +191,7 @@ p2Stmt stmt = case stmt of
       Just explicitSize -> do
         if explicitSize < lenElements
           then do
-            reportDiagn $ Error pos ""
+            reportDiagn $ Error (Just pos) ""
             return lenElements
           else
             return explicitSize
@@ -241,8 +245,8 @@ p2Assign left right = case left of
     src <- p2RightExpr right
     emitSeq $ Store dst src
   (A.Var varPos varId) -> do
-    (varFlatId, varKind) <- resolveVar varId varPos
-    expectScalar varId varPos varKind
+    (varFlatId, VarDecl _ kind) <- resolveVar varId varPos
+    expectScalar varId varPos kind
     p2AssignToVar varFlatId right
 
 -- | Assign to scalar var.
@@ -345,15 +349,15 @@ p2RightExpr rexpr = do
       p ptrExpr tmpVar
     --
     p (A.Sizeof pos arrId) _ = do
-      (_, arrKind) <- resolveVar arrId pos
-      elements <- expectArr arrId pos arrKind
+      (_, VarDecl _ kind) <- resolveVar arrId pos
+      elements <- expectArr arrId pos kind
       return $ Const $ fromIntegral (length elements)
     --
     p (A.LeftExpr _ l) tmpVar =
       lexpr l tmpVar
 
     lexpr (A.Var pos varId) _ = do
-      (varFlatId, varKind) <- resolveVar varId pos
+      (varFlatId, VarDecl _ varKind) <- resolveVar varId pos
       return $ case varKind of
         Array _ -> Address varFlatId
         Scalar -> Var varFlatId
@@ -366,12 +370,12 @@ p2RightExpr rexpr = do
 
 expectArr :: A.Ident -> A.P -> VarKind -> State Pass [Integer]
 expectArr ident pos Scalar = do
-  reportDiagn (Error pos $ printf "Variable %s has scalar kind, but an array was expected" ident)
+  reportDiagn (Error (Just pos) $ printf "Variable %s has scalar kind, but an array was expected" ident)
   return []
 expectArr _ _ (Array elements) = pure elements
 expectArr _ _ BogusKind = pure []
 
 expectScalar :: A.Ident -> A.P -> VarKind -> State Pass ()
 expectScalar ident pos (Array _) =
-  reportDiagn (Error pos $ printf "Variable %s has array kind, but a scalar was expected" ident)
+  reportDiagn (Error (Just pos) $ printf "Variable %s has array kind, but a scalar was expected" ident)
 expectScalar _ _ _ = pure ()

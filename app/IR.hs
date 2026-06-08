@@ -2,11 +2,15 @@
 
 module IR where
 
+import qualified AST as A
 import Data.List (intercalate)
 import ID (FlatID, Symbols)
 import Text.Printf (printf)
 
-data Operand = Var FlatID | Const Integer | Address FlatID
+data Operand
+  = Var FlatID
+  | Const Integer
+  | Address FlatID
 
 newtype Label = Label FlatID
 
@@ -31,7 +35,7 @@ data BinOp
   | BitAnd
 
 -- TODO: This representation is a good starting point, but it could be bad for
--- TODO: data flow analysis of conditions.
+-- data flow analysis of conditions.
 data BranchInstr
   = Br Label
   | BrIf BrCond Label Label
@@ -49,11 +53,15 @@ data LinearInstr
   | LBranchInstr BranchInstr
   | LSeqInstr SeqInstr
 
+data VarDecl = VarDecl (Maybe A.P) VarKind
+
 data VarKind
   = Scalar
   | Array [Integer]
-  | -- | This should never appear in successfully emitted IR
+  | -- | This should never appear in a successfully emitted IR
     BogusKind
+
+-- TODO: maybe I should relax constraints on linear IR?
 
 -- | Linear IR, unless optimized for codegen (the very last step), should not have implicit fallthroughs.
 -- Thus, any label is followed by branch instr, sequential instr, or the end of the program.
@@ -61,7 +69,7 @@ data VarKind
 -- And each label, except the start one, is preceded by branch instruction.
 data LinearProgram = LinearProgram
   { progInstrs :: [LinearInstr],
-    progVars :: Symbols VarKind,
+    progVars :: Symbols VarDecl,
     progLabels :: Symbols ()
   }
 
@@ -104,10 +112,10 @@ instance Show LinearInstr where
   show (LBranchInstr instr) = "    " ++ show instr
   show (LSeqInstr instr) = "    " ++ show instr
 
-instance Show VarKind where
-  show Scalar = "word"
-  show (Array els) = printf "[%s]" $ intercalate ", " $ map show els
-  show BogusKind = "BOGUS"
+instance Show VarDecl where
+  show (VarDecl _ Scalar) = "word"
+  show (VarDecl _ (Array els)) = printf "[%s]" $ intercalate ", " $ map show els
+  show (VarDecl _ BogusKind) = "BOGUS"
 
 instance Show LinearProgram where
   show (LinearProgram {progInstrs, progVars}) = printf "VARS\n%s\nCODE\n%s" varsString codeString

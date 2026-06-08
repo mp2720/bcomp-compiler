@@ -40,7 +40,7 @@ Now it lacks:
 
 parseProgram :: String -> ([Diagnostic], Program)
 parseProgram s = case runParser (program <* eof) (regularLexerState s) of
-  Left state -> ([Error (lexerPosition state) "syntax error"], Program [])
+  Left state -> ([Error (Just $ lexerPosition state) "syntax error"], Program [])
   Right (prog, _) -> ([], prog)
 
 program :: Rule Program
