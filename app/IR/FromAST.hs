@@ -96,7 +96,11 @@ declSym scopeLens symsLens mbPosIdent s = do
         Nothing -> return ()
     Nothing -> return ()
 
-  let (flatID, updSyms) = newSymbol (snd <$> mbPosIdent) s syms
+  let origID = case mbPosIdent of
+        Just (pos, ident) -> Just (ident, Just pos)
+        Nothing -> Nothing
+
+  let (flatID, updSyms) = newSymbol origID s syms
   -- Add to scope if the symbol is from AST
   let updScope = case mbPosIdent of
         Just (_, astID) -> Scope.addSymbol astID flatID s scope

@@ -37,6 +37,8 @@ Now it lacks:
 -- TODO: sometimes parser spits a syntax error with zero column position.
 -- I understand the logic, but that is not what you would usually expect from a parser.
 -- Not exactly sure if I should consider this a bug, so do some investigation and think about it.
+-- UPD: This is getting more annoying after I noticed all variable declarations with no indentation
+-- having zero column pos.
 
 parseProgram :: String -> ([Diagnostic], Program)
 parseProgram s = case runParser (program <* eof) (regularLexerState s) of

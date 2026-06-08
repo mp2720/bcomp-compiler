@@ -21,7 +21,7 @@ dump GraphProgram {progBlks, progVars} =
     vars =
       printf
         "vars[shape=record,style=dashed,fontname=\"Courier\",label=\"%s\"];\n"
-        (intercalate "\\l" $ map (escRec . var) $ Map.elems $ symbols progVars)
+        (intercalate "\\l" $ map (escRec . var) $ Map.toList $ symbols progVars)
 
     var (ident, IR.VarDecl _ IR.Scalar) = show ident
     var (ident, IR.VarDecl _ (IR.Array els)) = printf "%s[%d]" (show ident) (length els)
