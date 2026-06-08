@@ -16,6 +16,7 @@ import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError)
 import Text.Printf (printf)
+import qualified Opt.UnusedVars
 
 ppToFile :: String -> (a -> String) -> a -> IO ()
 ppToFile filename pp a = do
@@ -68,6 +69,7 @@ compile = do
     passDiagn parseProgram (pp "00_ast.b" AST.dump) source
       >>= passDiagn IR.FromAST.convert (pp "10_lin.ir" show)
       >>= pass CFG.FromIR.convert (pp "20_cfg.dot" CFG.Graphviz.dump)
+      >>= passDiagn Opt.UnusedVars.eliminate (pp "21_cfg.dot" CFG.Graphviz.dump)
 
   return ()
   where

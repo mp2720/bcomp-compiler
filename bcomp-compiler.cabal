@@ -42,7 +42,7 @@ library
         CFG
         CFG.FromIR
         CFG.Graphviz
-        Opt.UnreferencedVars
+        Opt.UnusedVars
 
     hs-source-dirs: app
 
@@ -64,7 +64,7 @@ executable bcomp-compiler
         CFG
         CFG.FromIR
         CFG.Graphviz
-        Opt.UnreferencedVars
+        Opt.UnusedVars
 
 Test-suite test
     import: shared-properties
