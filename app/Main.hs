@@ -9,14 +9,14 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT (runExceptT), throwE)
 import Diagnostics
 import qualified IR.FromAST
+import qualified Opt.UnusedVars
 import Parse.Grammar (parseProgram)
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (ExitFailure), exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPrint, hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError)
 import Text.Printf (printf)
-import qualified Opt.UnusedVars
 
 ppToFile :: String -> (a -> String) -> a -> IO ()
 ppToFile filename pp a = do
@@ -31,7 +31,7 @@ passDiagn ::
   ExceptT () IO b
 passDiagn p pp a = do
   let (diagns, b) = p a
-  liftIO $ forM_ diagns print
+  liftIO $ forM_ diagns $ hPrint stderr
   liftIO $ pp b
   if haveErrors diagns
     then throwE ()
@@ -58,7 +58,7 @@ compile = do
   source <- case args of
     [sourcePath] -> liftIO $ readFile sourcePath
     _ -> do
-      liftIO $ hPutStrLn stderr "invalid usage"
+      liftIO $ hPutStrLn stderr "invalid use"
       throwE ()
 
   liftIO $ rmDirIfExists outputDir
