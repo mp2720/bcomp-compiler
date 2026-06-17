@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
 module ID
-  ( FlatID (..),
+  ( FlatID (intID),
     bogusID,
     Symbols (Symbols, symbols),
     emptySymbols,
@@ -10,14 +10,22 @@ module ID
 where
 
 import qualified AST as A
+import Data.Function (on)
 import Data.List (intercalate)
 import Text.Printf (printf)
 
 data FlatID
   = FlatID
-  { intID :: Int,
-    origID :: Maybe A.Ident
+  { -- TODO: after makind FlatIDs Ord we can use them as keys in map and make intID private
+    intID :: Int,
+    _origID :: Maybe A.Ident
   }
+
+instance Eq FlatID where
+  (==) = on (==) intID
+
+instance Ord FlatID where
+  compare = on compare intID
 
 instance Show FlatID where
   show (FlatID intId Nothing) = show intId
