@@ -14,7 +14,7 @@ import Text.Printf (printf)
 -- Dark theme: https://cprimozic.net/notes/posts/basic-graphviz-dark-theme-config
 
 dump :: GraphProgram -> String
-dump GraphProgram {progBlks, progVars} =
+dump GraphProgram {progBlks, progStartBlkID, progVars} =
   printf "digraph {\n%s%s%s\n}" darkTheme vars (intercalate "\n" $ map gBlk $ Map.elems progBlks)
   where
     vars :: String
@@ -29,10 +29,18 @@ dump GraphProgram {progBlks, progVars} =
       where
         node :: String
         node =
-          printf
-            "%s[shape=record,fontname=\"Courier\",label=\"%s\"];\n"
-            (show $ intID blockFlatID)
-            nodeLabel
+          if blockFlatID == progStartBlkID
+            then
+              printf
+                "%s[shape=record,fontname=\"Courier\",label=\"%s\",fillcolor=\"%s\"];\n"
+                (show $ intID blockFlatID)
+                nodeLabel
+                darkThemeStartBlkFillColor
+            else
+              printf
+                "%s[shape=record,fontname=\"Courier\",label=\"%s\"];\n"
+                (show $ intID blockFlatID)
+                nodeLabel
 
         nodeLabel :: String
         nodeLabel =
@@ -71,6 +79,7 @@ dump GraphProgram {progBlks, progVars} =
           " fontcolor = \"#e6e6e6\"",
           "]\n"
         ]
+    darkThemeStartBlkFillColor = "#235a87"
 
 -- | Escape record text
 -- https://graphviz.org/doc/info/shapes.html#record

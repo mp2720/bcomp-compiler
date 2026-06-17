@@ -6,6 +6,7 @@ import qualified IR
 
 data GraphProgram = GraphProgram
   { progBlks :: Graph,
+    progStartBlkID :: FlatID,
     progVars :: Symbols IR.VarKind,
     progLabels :: Symbols ()
   }

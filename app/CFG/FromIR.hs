@@ -43,6 +43,7 @@ convert (IR.LinearProgram instrs vars linLabels) =
         return $
           GraphProgram
             { progBlks = computePreds $ graph updConv,
+              progStartBlkID = startBlkID, -- Always points to an existing block.
               progVars = vars,
               progLabels = labels updConv
             }
