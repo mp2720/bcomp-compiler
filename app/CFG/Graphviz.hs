@@ -32,14 +32,14 @@ dump GraphProgram {progBlks, progStartBlkID, progVars} =
           if blockFlatID == progStartBlkID
             then
               printf
-                "%s[shape=record,fontname=\"Courier\",label=\"%s\",fillcolor=\"%s\"];\n"
-                (show $ intID blockFlatID)
+                "%d[shape=record,fontname=\"Courier\",label=\"%s\",fillcolor=\"%s\"];\n"
+                (intID blockFlatID)
                 nodeLabel
                 darkThemeStartBlkFillColor
             else
               printf
-                "%s[shape=record,fontname=\"Courier\",label=\"%s\"];\n"
-                (show $ intID blockFlatID)
+                "%d[shape=record,fontname=\"Courier\",label=\"%s\"];\n"
+                (intID blockFlatID)
                 nodeLabel
 
         nodeLabel :: String
@@ -56,14 +56,14 @@ dump GraphProgram {progBlks, progStartBlkID, progVars} =
           Sink -> "SINK"
 
         edges = case blockOut of
-          Uncond toID -> printf "%d -> %d;" (intID blockFlatID) toID
+          Uncond toID -> printf "%d -> %d;" (intID blockFlatID) (intID toID)
           Cond _ thenID elseID ->
             printf
               "%d:t -> %d; %d:f -> %d;"
               (intID blockFlatID)
-              thenID
+              (intID thenID)
               (intID blockFlatID)
-              elseID
+              (intID elseID)
           Sink -> ""
     darkTheme =
       asum

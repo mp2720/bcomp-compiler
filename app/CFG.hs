@@ -11,17 +11,15 @@ data GraphProgram = GraphProgram
     progLabels :: Symbols ()
   }
 
--- | Block has the same int ID as its label.
--- It is used as key in graph.
-type BlockID = Int
+-- TODO: maybe introduce distinct types for "code" IDs and var IDs?
 
 data Block = Block
   { blockFlatID :: FlatID,
     blockCode :: [IR.SeqInstr],
-    blockPreds :: [BlockID],
+    blockPreds :: [FlatID],
     blockOut :: Edge
   }
 
-data Edge = Uncond BlockID | Cond IR.BrCond BlockID BlockID | Sink
+data Edge = Uncond FlatID | Cond IR.BrCond FlatID FlatID | Sink
 
-type Graph = Map Int Block
+type Graph = Map FlatID Block

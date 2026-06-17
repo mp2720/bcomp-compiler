@@ -7,7 +7,7 @@ import Control.Lens.Basic (field, over)
 import Control.Monad (forM_)
 import Control.Monad.Trans.State (State, evalState, get, modify, state)
 import qualified Data.Map as Map
-import ID (FlatID (..), Symbols, newSymbol)
+import ID (FlatID, Symbols, newSymbol)
 import qualified IR
 
 data Conv = Conv
@@ -59,7 +59,7 @@ computePreds og = Map.foldr predsForBlk og og
       Sink -> g
       where
         addPred = Map.adjust (over $(field 'blockPreds) (blkID :))
-        blkID = intID $ blockFlatID blk
+        blkID = blockFlatID blk
 
 -- The following algorithm is best thought of as a finite automaton that iterates through
 -- instructions and stores some state, including the current block label and its instructions.
@@ -92,7 +92,7 @@ convInstr instrs = forM_ instrs go
               { blockFlatID = prevBlkID,
                 blockCode = reverse prevBlkCode,
                 blockPreds = [],
-                blockOut = Uncond (intID label)
+                blockOut = Uncond label
               }
       -- start a new block
       modifyCurBlk $ const (Just (label, []))
@@ -101,9 +101,9 @@ convInstr instrs = forM_ instrs go
 
       -- compute outgoing arrow
       let blkOut = case br of
-            IR.Br (IR.Label label) -> Uncond $ intID label
+            IR.Br (IR.Label label) -> Uncond label
             IR.BrIf cond (IR.Label then_) (IR.Label else_) ->
-              Cond cond (intID then_) (intID else_)
+              Cond cond then_ else_
 
       blk <- case curBlk conv of
         Just (blkID, blkCode) ->
@@ -144,7 +144,7 @@ pushBlock blk =
   modify $
     over
       $(field 'graph)
-      ( Map.insert (intID $ blockFlatID blk) blk
+      ( Map.insert (blockFlatID blk) blk
       )
 
 modifyCurBlk ::

@@ -16,7 +16,7 @@ import Text.Printf (printf)
 
 data FlatID
   = FlatID
-  { -- TODO: after makind FlatIDs Ord we can use them as keys in map and make intID private
+  { -- | Unique integer id.
     intID :: Int,
     _origID :: Maybe A.Ident
   }
