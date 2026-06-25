@@ -49,7 +49,7 @@ instance State LexerState where
         _ -> line
       nextColumn = case c of
         '\r' -> column
-        '\n' -> 0
+        '\n' -> 1
         '\t' -> (column `div` tabLen + 1) * tabLen
         _ -> column + 1
 

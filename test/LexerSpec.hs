@@ -1,7 +1,7 @@
 module LexerSpec (spec) where
 
-import Diagnostics (P (..))
 import Control.Applicative (Alternative (many, (<|>)))
+import Diagnostics (P (..))
 import Parse.Combinators (eof, runParser)
 import Parse.Lexer
 import Test.Hspec
@@ -42,6 +42,9 @@ spec =
       r (operator ">") ">=" `shouldBe` Left (Position 0 1 1)
       r (("<=" <$ operator "<=") <|> ("<" <$ operator "<")) "<" `shouldBe` Right "<"
       r (operator "-" <* operator "~") "-~" `shouldBe` Right ()
+    it "position" $ do
+      r ((,,) <$> pos <* operator "+" <*> pos <* ident <*> pos <* ident) "  +\nab\n c"
+        `shouldBe` Right (Position 0 1 1, Position 4 2 1, Position 8 3 2)
     it "comments" $ do
       r ((,) <$> ident <*> ident) "    a//bc\n//\nd/   //e   " `shouldBe` Right ("a", "d")
       r
@@ -53,6 +56,6 @@ spec =
         )
         "a/******//*\n\n* /\n// */*b/**/"
         `shouldBe` Right ("a", "b")
-      r ident "a/*\nb" `shouldBe` Left (Position 5 2 1)
+      r ident "a/*\nb" `shouldBe` Left (Position 5 2 2)
     it "test lines count" $ do
-      r ((,) <$> ident <*> literal) "a\n\r\n " `shouldBe` Left (Position 5 3 1)
+      r ((,) <$> ident <*> literal) "a\n\r\n " `shouldBe` Left (Position 5 3 2)
