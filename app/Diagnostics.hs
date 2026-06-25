@@ -1,9 +1,23 @@
-module Diagnostics (Diagnostic (..), haveErrors) where
+module Diagnostics
+  ( P (..),
+    Diagnostic (..),
+    haveErrors,
+  )
+where
 
-import qualified AST as A
 import Text.Printf (printf)
 
-data Diagnostic = Error A.P String | Warning A.P String
+data P = Position
+  { positionOffset :: Int,
+    positionLine :: Int,
+    positionColumn :: Int
+  }
+  deriving (Eq)
+
+instance Show P where
+  show (Position _ line column) = printf "%d:%d" line column
+
+data Diagnostic = Error P String | Warning P String
 
 haveErrors :: [Diagnostic] -> Bool
 haveErrors = any isError

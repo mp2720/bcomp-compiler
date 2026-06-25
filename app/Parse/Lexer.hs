@@ -12,13 +12,13 @@ module Parse.Lexer
   )
 where
 
-import AST (P (..))
 import Control.Applicative (Alternative (many, (<|>)), asum)
 import Control.Monad (unless)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import Data.Function (on)
 import Data.Functor (void)
 import Data.List (elemIndex, foldl')
+import Diagnostics (P (..))
 import Parse.Combinators (Parser (..), State (..), failParser, mapTerm, notFollowedBy, satisfy, try)
 
 data LexerState = LexerState

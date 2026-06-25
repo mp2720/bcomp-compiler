@@ -1,9 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module AST
-  ( P (..),
-    Positioned (..),
-    Program (..),
+  ( Program (..),
+    Positioned (position),
     Ident,
     Stmt (..),
     LabeledStmt (..),
@@ -18,17 +17,8 @@ module AST
 where
 
 import Data.List (intercalate)
+import Diagnostics (P)
 import Text.Printf (printf)
-
-data P = Position
-  { positionOffset :: Int,
-    positionLine :: Int,
-    positionColumn :: Int
-  }
-  deriving (Eq)
-
-instance Show P where
-  show (Position _ line column) = printf "%d:%d" line column
 
 newtype Program = Program [Stmt]
   deriving (Show, Eq)

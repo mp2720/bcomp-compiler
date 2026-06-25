@@ -29,6 +29,7 @@ common shared-properties
 library
     import: shared-properties
     exposed-modules:
+        Diagnostics
         Parse.Combinators
         Parse.Lexer
         Parse.Grammar
@@ -37,7 +38,6 @@ library
         IR
         IR.Scope
         IR.FromAST
-        Diagnostics
         ID
         CFG
         CFG.FromIR

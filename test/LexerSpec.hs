@@ -1,6 +1,6 @@
 module LexerSpec (spec) where
 
-import AST (P (..))
+import Diagnostics (P (..))
 import Control.Applicative (Alternative (many, (<|>)))
 import Parse.Combinators (eof, runParser)
 import Parse.Lexer

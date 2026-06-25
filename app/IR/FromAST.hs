@@ -3,12 +3,12 @@
 
 module IR.FromAST (convert) where
 
-import qualified AST as A
+import qualified AST
 import Control.Lens.Basic (Lens)
 import qualified Control.Lens.Basic as Lens
 import Control.Monad (forM_, void)
 import Control.Monad.Trans.State (State, execState, get, modify, put, runState)
-import Diagnostics (Diagnostic (..))
+import Diagnostics (Diagnostic (..), P)
 import ID (FlatID, Symbols, bogusID, emptySymbols, newSymbol)
 import IR
 import IR.Scope (Scope)
@@ -28,7 +28,7 @@ data Pass = Pass
 
 -- | Iff the program is malformed, diagnostics list with error is returned and linear program could
 -- be bogus (so it should never be passed further along the compilation steps chain)
-convert :: A.Program -> ([Diagnostic], LinearProgram)
+convert :: AST.Program -> ([Diagnostic], LinearProgram)
 convert ast =
   ( reverse $ diagnostics pass,
     LinearProgram
@@ -79,7 +79,7 @@ type SymsLens s = Lens Pass Pass (Symbols s) (Symbols s)
 declSym ::
   ScopeLens s ->
   SymsLens s ->
-  Maybe (A.P, A.Ident) ->
+  Maybe (P, AST.Ident) ->
   s ->
   State Pass FlatID
 declSym scopeLens symsLens mbPosIdent s = do
@@ -108,13 +108,13 @@ declSym scopeLens symsLens mbPosIdent s = do
   return flatID
 
 declLabel ::
-  Maybe (A.P, A.Ident) ->
+  Maybe (P, AST.Ident) ->
   State Pass Label
 declLabel mbPosIdent =
   Label <$> declSym $(Lens.field 'labelsScope) $(Lens.field 'labels) mbPosIdent ()
 
 declVar ::
-  Maybe (A.P, A.Ident) ->
+  Maybe (P, AST.Ident) ->
   VarKind ->
   State Pass FlatID
 declVar =
@@ -123,8 +123,8 @@ declVar =
 resolveSym ::
   ScopeLens s ->
   s ->
-  A.Ident ->
-  A.P ->
+  AST.Ident ->
+  P ->
   State Pass (FlatID, s)
 resolveSym scopeLens defaultS ident pos = do
   state <- get
@@ -135,52 +135,52 @@ resolveSym scopeLens defaultS ident pos = do
     Just entry -> return entry
 
 resolveVar ::
-  A.Ident ->
-  A.P ->
+  AST.Ident ->
+  P ->
   State Pass (FlatID, VarKind)
 resolveVar = resolveSym $(Lens.field 'varsScope) BogusKind
 
-resolveLabel :: String -> A.P -> State Pass FlatID
+resolveLabel :: String -> P -> State Pass FlatID
 resolveLabel ident pos = fst <$> resolveSym $(Lens.field 'labelsScope) () ident pos
 
 -- Pass 1 (collect labels)
 
-pass1 :: A.Program -> State Pass ()
-pass1 (A.Program stms) = forM_ stms p1Stmt
+pass1 :: AST.Program -> State Pass ()
+pass1 (AST.Program stms) = forM_ stms p1Stmt
 
-p1Stmt :: A.Stmt -> State Pass ()
-p1Stmt (A.ExecStmt _ stmt) = p1LabeledStmt stmt
+p1Stmt :: AST.Stmt -> State Pass ()
+p1Stmt (AST.ExecStmt _ stmt) = p1LabeledStmt stmt
 p1Stmt _ = return ()
 
-p1LabeledStmt :: A.LabeledStmt -> State Pass ()
-p1LabeledStmt (A.LabeledStmt pos mbIdent execStmt) = do
+p1LabeledStmt :: AST.LabeledStmt -> State Pass ()
+p1LabeledStmt (AST.LabeledStmt pos mbIdent execStmt) = do
   case mbIdent of
     Nothing -> pure ()
     Just ident -> void $ declLabel (Just (pos, ident))
   case execStmt of
-    A.Block _ stmts -> forM_ stmts p1Stmt
-    A.If _ _ then_ else_ -> do
+    AST.Block _ stmts -> forM_ stmts p1Stmt
+    AST.If _ _ then_ else_ -> do
       p1LabeledStmt then_
       p1LabeledStmt else_
     _ -> pure ()
 
 -- Pass 2 (collect variables & emit IR)
 
-pass2 :: A.Program -> State Pass ()
-pass2 (A.Program stmts) = do
+pass2 :: AST.Program -> State Pass ()
+pass2 (AST.Program stmts) = do
   start <- declLabel Nothing
   emitLabel start
   forM_ stmts p2Stmt
 
-p2Stmt :: A.Stmt -> State Pass ()
+p2Stmt :: AST.Stmt -> State Pass ()
 p2Stmt stmt = case stmt of
-  (A.ExecStmt _ labStmt) -> p2LabeledStmt labStmt
+  (AST.ExecStmt _ labStmt) -> p2LabeledStmt labStmt
   --
-  (A.VarDef pos ident mbRexpr) -> do
+  (AST.VarDef pos ident mbRexpr) -> do
     flatId <- declVar (Just (pos, ident)) Scalar
     forM_ mbRexpr (p2AssignToVar flatId)
   --
-  (A.ArrDef pos ident mbExplicitSize elements) -> do
+  (AST.ArrDef pos ident mbExplicitSize elements) -> do
     let lenElements = fromIntegral $ length elements
     size <- case mbExplicitSize of
       Nothing -> return lenElements
@@ -198,8 +198,8 @@ p2Stmt stmt = case stmt of
 
     return ()
 
-p2LabeledStmt :: A.LabeledStmt -> State Pass ()
-p2LabeledStmt (A.LabeledStmt pos mbIdent stmt) = do
+p2LabeledStmt :: AST.LabeledStmt -> State Pass ()
+p2LabeledStmt (AST.LabeledStmt pos mbIdent stmt) = do
   case mbIdent of
     Nothing -> pure ()
     Just ident -> do
@@ -209,19 +209,19 @@ p2LabeledStmt (A.LabeledStmt pos mbIdent stmt) = do
 
   p2ExecStmt stmt
 
-p2ExecStmt :: A.ExecStmt -> State Pass ()
+p2ExecStmt :: AST.ExecStmt -> State Pass ()
 p2ExecStmt stmt = case stmt of
-  (A.Assign _ lhs rhs) -> p2Assign lhs rhs
+  (AST.Assign _ lhs rhs) -> p2Assign lhs rhs
   --
-  (A.If _ cond then_ else_) ->
+  (AST.If _ cond then_ else_) ->
     p2If cond (p2LabeledStmt then_) (p2LabeledStmt else_)
   --
-  (A.Goto pos label) -> do
+  (AST.Goto pos label) -> do
     flatLabel <- resolveLabel label pos
     emitBranch $ Br $ Label flatLabel
     return ()
   --
-  (A.Block _ stmts) -> do
+  (AST.Block _ stmts) -> do
     state <- get
     let parentVarsScope = varsScope state
     let updState =
@@ -232,21 +232,21 @@ p2ExecStmt stmt = case stmt of
               }
     put updState {varsScope = parentVarsScope}
   --
-  (A.NoOp _) -> return ()
+  (AST.NoOp _) -> return ()
 
-p2Assign :: A.LeftExpr -> A.RightExpr -> State Pass ()
+p2Assign :: AST.LeftExpr -> AST.RightExpr -> State Pass ()
 p2Assign left right = case left of
-  (A.PtrDeref _ dstExpr) -> do
+  (AST.PtrDeref _ dstExpr) -> do
     dst <- p2RightExpr dstExpr
     src <- p2RightExpr right
     emitSeq $ Store dst src
-  (A.Var varPos varId) -> do
+  (AST.Var varPos varId) -> do
     (varFlatId, varKind) <- resolveVar varId varPos
     expectScalar varId varPos varKind
     p2AssignToVar varFlatId right
 
 -- | Assign to scalar var.
-p2AssignToVar :: FlatID -> A.RightExpr -> State Pass ()
+p2AssignToVar :: FlatID -> AST.RightExpr -> State Pass ()
 p2AssignToVar varFlatId rexpr = do
   -- TODO: OPT: optimize redundant copy emitted for assign
 
@@ -254,7 +254,7 @@ p2AssignToVar varFlatId rexpr = do
   emitSeq $ Copy varFlatId src
 
 p2If ::
-  A.RightExpr ->
+  AST.RightExpr ->
   State Pass () ->
   State Pass () ->
   State Pass ()
@@ -278,21 +278,21 @@ p2If cond then_ else_ = do
     )
   emitLabel labelIfEnd
   where
-    emitCond (A.RelOpApp _ leftExpr op rightExpr) labelThen labelElse = do
+    emitCond (AST.RelOpApp _ leftExpr op rightExpr) labelThen labelElse = do
       l <- p2RightExpr leftExpr
       r <- p2RightExpr rightExpr
       emitBranch $
         ( case op of
-            A.Equals -> BrIf (IfEq l r)
-            A.NotEq -> flip $ BrIf (IfEq l r)
-            A.Gt -> flip $ BrIf (IfLt l r)
-            A.Geq -> BrIf (IfGe l r)
-            A.Lt -> BrIf (IfLt l r)
-            A.Leq -> flip $ BrIf (IfGe l r)
-            A.UnsignedGt -> flip $ BrIf (IfUnsignedLt l r)
-            A.UnsignedGeq -> BrIf (IfUnsignedGe l r)
-            A.UnsignedLt -> BrIf (IfUnsignedLt l r)
-            A.UnsignedLeq -> flip $ BrIf (IfUnsignedGe l r)
+            AST.Equals -> BrIf (IfEq l r)
+            AST.NotEq -> flip $ BrIf (IfEq l r)
+            AST.Gt -> flip $ BrIf (IfLt l r)
+            AST.Geq -> BrIf (IfGe l r)
+            AST.Lt -> BrIf (IfLt l r)
+            AST.Leq -> flip $ BrIf (IfGe l r)
+            AST.UnsignedGt -> flip $ BrIf (IfUnsignedLt l r)
+            AST.UnsignedGeq -> BrIf (IfUnsignedGe l r)
+            AST.UnsignedLt -> BrIf (IfUnsignedLt l r)
+            AST.UnsignedLeq -> flip $ BrIf (IfUnsignedGe l r)
         )
           labelThen
           labelElse
@@ -300,28 +300,28 @@ p2If cond then_ else_ = do
       condOpnd <- p2RightExpr condExpr
       emitBranch $ BrIf (IfZero condOpnd) labelElse labelThen
 
-p2RightExpr :: A.RightExpr -> State Pass Operand
+p2RightExpr :: AST.RightExpr -> State Pass Operand
 p2RightExpr rexpr = do
   -- TODO: OPT: optimize tmpVar out if not used
 
   tmpVarFlatId <- declVar Nothing Scalar
   p rexpr tmpVarFlatId
   where
-    p (A.Literal _ lit) _ =
+    p (AST.Literal _ lit) _ =
       return $ Const lit
     --
-    p (A.BinOpApp _ leftExpr astOp rightExpr) tmpVar = do
+    p (AST.BinOpApp _ leftExpr astOp rightExpr) tmpVar = do
       left <- p2RightExpr leftExpr
       right <- p2RightExpr rightExpr
       let irOp = case astOp of
-            A.Add -> Add
-            A.Sub -> Sub
-            A.BitAnd -> BitAnd
-            A.BitOr -> BitOr
+            AST.Add -> Add
+            AST.Sub -> Sub
+            AST.BitAnd -> BitAnd
+            AST.BitOr -> BitOr
       emitSeq $ BinOp tmpVar left irOp right
       return $ Var tmpVar
     --
-    p condExpr@(A.RelOpApp {}) tmpVar = do
+    p condExpr@(AST.RelOpApp {}) tmpVar = do
       -- TODO: OPT: optimize code for case when logic expression is evaluated to var,
       -- then used in an if statemtn
       p2If
@@ -330,48 +330,48 @@ p2RightExpr rexpr = do
         (emitSeq $ Copy tmpVar (Const 0))
       return $ Var tmpVar
     --
-    p (A.UnaryOpApp _ astOp expr) tmpVar = do
+    p (AST.UnaryOpApp _ astOp expr) tmpVar = do
       opnd <- p2RightExpr expr
       emitSeq $ case astOp of
-        A.BitNot -> BitNot tmpVar opnd
-        A.Negate -> Negate tmpVar opnd
+        AST.BitNot -> BitNot tmpVar opnd
+        AST.Negate -> Negate tmpVar opnd
       return $ Var tmpVar
     --
-    p (A.AddressOf _ (A.Var varPos varId)) _ = do
+    p (AST.AddressOf _ (AST.Var varPos varId)) _ = do
       (varFlatId, _) <- resolveVar varId varPos
       return $ Address varFlatId
     --
-    p (A.AddressOf _ (A.PtrDeref _ ptrExpr)) tmpVar =
+    p (AST.AddressOf _ (AST.PtrDeref _ ptrExpr)) tmpVar =
       p ptrExpr tmpVar
     --
-    p (A.Sizeof pos arrId) _ = do
+    p (AST.Sizeof pos arrId) _ = do
       (_, arrKind) <- resolveVar arrId pos
       elements <- expectArr arrId pos arrKind
       return $ Const $ fromIntegral (length elements)
     --
-    p (A.LeftExpr _ l) tmpVar =
+    p (AST.LeftExpr _ l) tmpVar =
       lexpr l tmpVar
 
-    lexpr (A.Var pos varId) _ = do
+    lexpr (AST.Var pos varId) _ = do
       (varFlatId, varKind) <- resolveVar varId pos
       return $ case varKind of
         Array _ -> Address varFlatId
         Scalar -> Var varFlatId
         BogusKind -> Var varFlatId
     --
-    lexpr (A.PtrDeref _ ptrExpr) tmpVar = do
+    lexpr (AST.PtrDeref _ ptrExpr) tmpVar = do
       src <- p2RightExpr ptrExpr
       emitSeq $ Load tmpVar src
       return $ Var tmpVar
 
-expectArr :: A.Ident -> A.P -> VarKind -> State Pass [Integer]
+expectArr :: AST.Ident -> P -> VarKind -> State Pass [Integer]
 expectArr ident pos Scalar = do
   reportDiagn (Error pos $ printf "Variable %s has scalar kind, but an array was expected" ident)
   return []
 expectArr _ _ (Array elements) = pure elements
 expectArr _ _ BogusKind = pure []
 
-expectScalar :: A.Ident -> A.P -> VarKind -> State Pass ()
+expectScalar :: AST.Ident -> P -> VarKind -> State Pass ()
 expectScalar ident pos (Array _) =
   reportDiagn (Error pos $ printf "Variable %s has array kind, but a scalar was expected" ident)
 expectScalar _ _ _ = pure ()

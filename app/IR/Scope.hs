@@ -11,7 +11,7 @@ module IR.Scope
   )
 where
 
-import AST qualified as A
+import AST qualified
 import Control.Applicative ((<|>))
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -19,7 +19,7 @@ import ID (FlatID (..))
 
 data Scope s
   = Scope
-  { symbolsMap :: Map A.Ident (FlatID, s),
+  { symbolsMap :: Map AST.Ident (FlatID, s),
     parent :: Maybe (Scope s)
   }
 
@@ -31,24 +31,24 @@ empty =
     }
 
 lookupSymbol' ::
-  (A.Ident -> Scope s -> Maybe (FlatID, s)) ->
-  A.Ident ->
+  (AST.Ident -> Scope s -> Maybe (FlatID, s)) ->
+  AST.Ident ->
   Scope s ->
   Maybe (FlatID, s)
 lookupSymbol' rec ident Scope {symbolsMap, parent} =
   Map.lookup ident symbolsMap <|> (rec ident =<< parent)
 
 -- | Lookup in the current scope.
-lookupSymbol :: A.Ident -> Scope s -> Maybe (FlatID, s)
+lookupSymbol :: AST.Ident -> Scope s -> Maybe (FlatID, s)
 lookupSymbol = lookupSymbol' (const2 Nothing)
   where
     const2 a _ _ = a
 
 -- | Lookup recursively.
-lookupSymbolRec :: A.Ident -> Scope s -> Maybe (FlatID, s)
+lookupSymbolRec :: AST.Ident -> Scope s -> Maybe (FlatID, s)
 lookupSymbolRec = lookupSymbol' lookupSymbolRec
 
-addSymbol :: A.Ident -> FlatID -> s -> Scope s -> Scope s
+addSymbol :: AST.Ident -> FlatID -> s -> Scope s -> Scope s
 addSymbol astID flatID s scope@Scope {symbolsMap} =
   scope
     { symbolsMap = Map.insert astID (flatID, s) symbolsMap
